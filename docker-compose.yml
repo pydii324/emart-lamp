@@ -71,3 +71,16 @@ services:
     image: redis:latest
     ports:
       - "127.0.0.1:${HOST_MACHINE_REDIS_PORT}:6379"
+  node:
+    container_name: "${COMPOSE_PROJECT_NAME}-node"
+    image: node:22-alpine
+    restart: "always"
+    tty: true
+    working_dir: /app
+    volumes:
+      - ${DOCUMENT_ROOT-./www}:/app
+      - node_modules:/app/node_modules
+    command: sh -c "npm install --no-audit --no-fund --ignore-scripts && npm run dev"
+
+volumes:
+  node_modules:
