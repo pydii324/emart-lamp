@@ -88,6 +88,13 @@ libpng-dev && \
     docker-php-ext-configure gd --enable-gd --with-freetype --with-jpeg && \
     docker-php-ext-install gd
 
+# Warm composer package cache so runtime `composer install` skips network downloads.
+# Build context must be project root (see docker-compose.yml build.context).
+COPY public_html/composer.json public_html/composer.lock /tmp/composer-warm/
+RUN cd /tmp/composer-warm && \
+    composer install --no-scripts --no-autoloader --no-interaction --prefer-dist --no-progress && \
+    rm -rf /tmp/composer-warm
+
 # Insure an SSL directory exists
 RUN mkdir -p /etc/apache2/ssl
 

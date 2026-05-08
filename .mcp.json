@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "mysql-all-dbs": {
+      "type": "stdio",
+      "command": "docker",
+      "args": [
+        "run",
+        "--rm",
+        "-i",
+        "-e",
+        "MYSQL_URL=mysql://root:tiger@host.docker.internal:3306",
+        "ghcr.io/drago1520/mysql-mcp:latest"
+      ],
+      "env": {}
+    }
+  }
+}
