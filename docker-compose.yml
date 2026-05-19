@@ -12,6 +12,7 @@ services:
       - database
     volumes:
       - ${DOCUMENT_ROOT-./www}:/var/www/html:rw
+      - vendor_php:/var/www/vendor
       - ${PHP_INI-./config/php/php.ini}:/usr/local/etc/php/php.ini
       - ${SSL_DIR-./config/ssl}:/etc/apache2/ssl/
       - ${VHOSTS_DIR-./config/vhosts}:/etc/apache2/sites-enabled
@@ -84,3 +85,4 @@ services:
 
 volumes:
   node_modules:
+  vendor_php:
