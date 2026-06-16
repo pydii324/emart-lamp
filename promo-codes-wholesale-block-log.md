@@ -1,63 +1,66 @@
-# Promo — Wholesale блок + `used_by_employeeId`
+# Promo — Wholesale × процент промо (compare-and-pick-lower) + `used_by_employeeId`
 
-Имплементация на issue [#610](https://github.com/drago1520/emart-gitlab-github-migration/issues/610) (продължение след Phase 2). Три искания от drago:
+Продължение на issue [#610](https://github.com/drago1520/emart-gitlab-github-migration/issues/610) след Phase 2.
 
-1. **Wholesale блок** — клиент с отстъпка на едро (`klienti.grupa_otstapki` ∈ {2,3}) не може да ползва промо кодове изобщо; показва се съобщение защо.
-2. **`used_by_employeeId`** — нова колона за проследяване кой служител е ползвал кода (легаси `imartap.obshti_kodove.potrebitel`). Само schema — попълва се от админската част (отделен проект).
-3. **`min_subtotal` след всички отстъпки** — вече покрито от Phase 2 (`CartItems::subtotal()` = `SUM(it_suma)`, post-discount). **Без код.**
+> **ВАЖНО — смяна на подход.** Първоначално имплементирахме **пълен блок** на промо кодове за wholesale групи (`grupa_otstapki ∈ {2,3}`). drago уточни, че НЕ това се иска. Блокът е **върнат (reverted) изцяло**. Виж Part A.
 
 ---
 
-## Как работи `grupa_otstapki`
+## Part A — Процент промо × wholesale: compare-and-pick-lower (БЕЗ нов код)
 
-`klienti.grupa_otstapki` INT (0–8): `0` = дребно (retail), `1–8` = ценова група на едро. Каталогът има 8 цени на продукт (`p_cengr_1…p_cengr_8`); `cenni()` ([ceni/cenni.php](public_html/ceni/cenni.php#L34)) ползва `$cengr_f = $p_gr_otst_klie` → клиент с група > 0 плаща груповата цена на всеки продукт. Зарежда се в [sesii.php:546](public_html/citte/sesii.php#L546) → `$p_gr_otst_klie`. Т.е. wholesale клиент вече има отстъпка → drago иска да НЕ трупа отгоре и промо код.
+### Изискване (drago)
+Не следим wholesale групи. За **процент** код: смятай го върху **основната цена** (`it_osnovna_cena`) и вземи по-ниската цена per артикул:
+- ако wholesale цената е по-ниска от `основна × (1−%)` → приложи **само wholesale** (промо дава 0);
+- ако `основна × (1−%)` е по-ниска → приложи **промо кода върху основната цена**.
 
-`{2,3}` са в **конфигуруема константа** `PromoCode::WHOLESALE_GROUPS` — смяна без друг code edit.
-
----
-
-## Part A — Wholesale блок (3 слоя защита)
-
-Защита на UI + server validate/apply + recalc, за да не се заобикаля.
-
-| Слой | Файл | Промяна |
-|---|---|---|
-| Константа + helper | [lib/PromoCode.php](public_html/citte/lib/PromoCode.php) | `const WHOLESALE_GROUPS = [2,3]` + `static blocksPromo(int $grupa): bool` |
-| Validate (apply) | [lib/PromoCode.php](public_html/citte/lib/PromoCode.php) | `validate(..., int $grupaOtstapki = 0)` — при `blocksPromo()` връща `['valid'=>false,'error'=>'Имате клиентска отстъпка на едро — промо кодове не важат.']` веднага след празен-код проверката |
-| Revalidate (recalc) | [lib/PromoCode.php](public_html/citte/lib/PromoCode.php) | `revalidate(..., int $grupaOtstapki = 0)` — при `blocksPromo()` `$blockAll=true` → drop ВСИЧКИ редове (същата DELETE логика). Покрива: гост слага код → логва се като wholesale |
-| Recalc orchestrator | [lib/db-switch.php](public_html/citte/lib/db-switch.php) | `promo_recalc()` чете `grupa_otstapki` за `$po` **регионално** (преди imartap swap, `klienti` е регионална) и подава в `revalidate()` |
-| API validate | [api/promo-validate.php](public_html/citte/api/promo-validate.php) | `sesii` заявката `LEFT JOIN klienti` → `$grupa`; `validate($kod,$cartTotal,$po,$appliedIds,$grupa)` |
-| API apply | [api/promo-cart.php](public_html/citte/api/promo-cart.php) | същият join + `validate(...,$grupa)`; блокът връща `valid=false` → съществуващият error path показва съобщението |
-| UI gate | [citte/promo-input.php](public_html/citte/promo-input.php) | при `PromoCode::blocksPromo($p_gr_otst_klie)` рендира съобщение (`$prevodite[3106]`) и `return` — без input/chips/JS |
-
-**Поведение:**
-- **Guest** (`$po=0`) → няма група → промо разрешен (`COALESCE(...,0)`).
-- **grupa ∈ {2,3}** → блокиран на трите слоя.
-- **grupa ∈ {0,1,4–8}** → промо работи (regression-safe).
-
-**SQL pattern за зареждане на групата** (двата API):
-```sql
-SELECT s.po, s.pe, COALESCE(k.grupa_otstapki, 0) AS grupa
-FROM sesii s LEFT JOIN klienti k ON k.klienti_id = s.po
-WHERE s.sesii_id = '$tuksus' LIMIT 1;
+### Това вече е имплементирано в [PromoCalc.php:54-81](public_html/citte/lib/PromoCalc.php#L54)
+```php
+$u1   = $cur / $br;                                  // Phase 1 unit = wholesale цена (за групов клиент)
+$effU = min($u1, round($osn * (1 - $pct/100), 2));   // min(wholesale, основна×(1−%))
 ```
+Защо работи коректно (трите ценови фази):
+| Фаза | Носител | За wholesale клиент |
+|---|---|---|
+| 0 | `it_osnovna_cena` | retail базова цена ([v_case.php:267](public_html/citte/v_case.php#L267): `catalog.cena × курс`, БЕЗ групова отстъпка) |
+| 1 | `it_cena`/`it_suma` → `phase1_suma` | **wholesale груповата цена** (`cenni()` прилага `grupa_otstapki` при add-to-cart) |
+| 2 | PromoCalc | `min(phase1, osnovna×(1−%))` per артикул |
 
-**i18n:** нов ключ `3106` (промо ползва 3100–3105). Стойност: „Имате клиентска отстъпка на едро — промо кодове не важат." Кодът има fallback default → работи и без вписан превод.
+→ Процентът се смята от основната цена; ако паднеш под wholesale — pick wholesale. Точно искането.
+
+### Числова проверка (standalone PromoCalc тест)
+Wholesale=8.00, osnovna=10.00:
+```
+10% код: osnovna×0.9=9.00 > 8.00 → промо=0.00, финал=8.00  (само wholesale)
+30% код: osnovna×0.7=7.00 < 8.00 → промо=1.00, финал=7.00  (промо на основната)
+retail (без wholesale) 10%: → 9.00
+```
+Всички минават. (Тестът е ad-hoc, не персистнат.)
+
+### Reverted (върнато към оригинала)
+Блокът, който беше добавен и после махнат — без следи:
+- [lib/PromoCode.php](public_html/citte/lib/PromoCode.php) — махнати `WHOLESALE_GROUPS`/`blocksPromo()`; `validate()` и `revalidate()` без `grupaOtstapki` param.
+- [lib/db-switch.php](public_html/citte/lib/db-switch.php) — `promo_recalc()` без зареждане на `grupa_otstapki`.
+- [api/promo-validate.php](public_html/citte/api/promo-validate.php) + [api/promo-cart.php](public_html/citte/api/promo-cart.php) — `sesii` заявката върната без join към `klienti`.
+- [citte/promo-input.php](public_html/citte/promo-input.php) — махнат UI gate / съобщението.
+- i18n ключ `3106` — не е нужен.
+
+`grep` потвърждава: нула `blocksPromo|WHOLESALE|grupaOtstapki` референции остават.
 
 ---
 
-## Part B — `used_by_employeeId` (само schema, без storefront връзка)
+## Part B — `used_by_employeeId` (само schema, БЕЗ storefront връзка) — ЗАПАЗЕНО
 
-Колоната е за **админската част** (отделен проект). Storefront НЯМА служител session (`the-marketer` = външно REST API; `potrebitel` навсякъде = клиентът) → storefront не я пипа. `markUsed()` НЕ е променян → редове от storefront остават `NULL`; админ app-ът попълва.
+Несвързано с Part A; остава както беше.
 
 - **Файл:** [mysql-dumps/promo_codes/11-add-used-by-employee.sql](mysql-dumps/promo_codes/11-add-used-by-employee.sql)
 - **Колона:** `order_promo_codes.used_by_employeeId INT NULL DEFAULT NULL`
-- Idempotent + table-existence guarded, таргетира `DATABASE()` (като [08](mysql-dumps/promo_codes/08-add-phase2-columns.sql)). `order_promo_codes` е само в `imartap` → no-op срещу регионалните.
+- Idempotent + table-existence guarded, таргетира `DATABASE()` (като [08](mysql-dumps/promo_codes/08-add-phase2-columns.sql)). `order_promo_codes` е само в `imartap` → no-op срещу региони.
+- Попълва се от **админската част** (отделен проект). Storefront НЯМА служител session → `markUsed()` НЕ е пипан; редове от storefront остават `NULL`.
 
 ---
 
 ## Part C — `min_subtotal` след отстъпки
-**Без код.** `validate()`/`revalidate()` сравняват срещу `CartItems::subtotal()` = post-Phase-2 цена. drago: „вече добавено".
+**Без код.** `validate()`/`revalidate()` сравняват срещу `CartItems::subtotal()` = `SUM(it_suma + discount_applied)` = post-Phase-2 цена.
 
 ---
 
@@ -67,10 +70,10 @@ WHERE s.sesii_id = '$tuksus' LIMIT 1;
 |---|---|---|---|
 | 11 | [11-add-used-by-employee.sql](mysql-dumps/promo_codes/11-add-used-by-employee.sql) | `order_promo_codes.used_by_employeeId INT NULL` | `imartap` (no-op за региони) |
 
-**Изпълнение** (per region) през `emart-monorepo/packages/db/scripts/batch-sql-dbs/sql-batch-dbs.ts`, същия начин като 08/09/10. Re-run = no-op (idempotent).
+**Изпълнение** (per region) през `emart-monorepo/packages/db/scripts/batch-sql-dbs/sql-batch-dbs.ts`, като 08/09/10. Re-run = no-op.
 
 ```sql
--- 11-add-used-by-employee.sql (същия guard pattern като 08)
+-- 11-add-used-by-employee.sql (guard pattern като 08)
 SET @ddl := (SELECT IF(
   EXISTS(SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_promo_codes')
   AND NOT EXISTS(SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_promo_codes' AND COLUMN_NAME = 'used_by_employeeId'),
@@ -79,21 +82,20 @@ SET @ddl := (SELECT IF(
 PREPARE st FROM @ddl; EXECUTE st; DEALLOCATE PREPARE st;
 ```
 
-> Бележка: миграцията НЕ изпълнена срещу базата (app/DB не runnable локално — `zamysql.php` gitignored). Чака staging/production run.
+> Миграцията НЕ изпълнена срещу базата (DB не runnable локално — `zamysql.php` gitignored). Чака staging/production run.
 
 ---
 
-## Проверено
-- `php -l` на всички 5 променени PHP файла → clean.
-- Логика на `revalidate()` branch chain → запазена (`$blockAll` fall-through, иначе старите elseif проверки).
-- Class scope: `db-switch.php` (`require_once PromoCode.php`) зареден в [case.php:24](public_html/citte/case.php#L24) преди include на promo-input.php ([case.php:573](public_html/citte/case.php#L573)) → `PromoCode::blocksPromo()` достъпен.
+## Състояние на кода
+- 5-те PHP файла (PromoCode, db-switch, promo-validate, promo-cart, promo-input) → върнати към оригинала, `php -l` clean.
+- PromoCalc.php → непроменян; вече прави compare-and-pick-lower.
+- Само нов файл: миграция `11`.
 
 ## За production / staging
-- [ ] Изпълни миграция `11` на `imartap` (+ безопасна за региони).
-- [ ] Впиши i18n ключ `3106` (има fallback default).
-- [ ] Потвърди с drago дали `{2,3}` са точните wholesale групи (срещу 1–8) → ако не, смени само `PromoCode::WHOLESALE_GROUPS`.
-- [ ] Staging end-to-end: grupa 2/0/1 + guest→login сценарии (виж плана).
+- [ ] Изпълни миграция `11` на `imartap`.
+- [ ] Staging проверка: wholesale клиент + процент код → провери че финалната цена per артикул = `min(wholesale, основна×(1−%))`.
+- [ ] (Отделен проект) админ app да попълва `used_by_employeeId`.
 
 ## Отворени въпроси (drago)
-1. Wholesale групи: точно `{2,3}`?
+1. Поведение при **fixed (ваучер)** и **shipping** кодове за wholesale клиент — остават нормални (махат от subtotal/доставка). Изискването беше само за **процент**. Потвърди ако трябва друго.
 2. (По-късно) The Marketer min order value на код-създаване в `promo-codes.php`.
