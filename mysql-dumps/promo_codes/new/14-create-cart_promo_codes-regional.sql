@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS `cart_promo_codes` (
   `promo_code_id`    INT           NOT NULL COMMENT 'imartap.promo_codes.id (no cross-DB FK)',
   `code`             VARCHAR(50)   NOT NULL,
   `discount_applied` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '0 for shipping types; real deduction for percent/fixed',
+  `discount_value`   DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT 'Snapshot of promo_codes.discount_value at apply-time (% or lv.); avoids cross-host catalog read at recalc/finalize',
   `type`             ENUM('percent','fixed','shipping','shipping_percent') NOT NULL,
   `shipping_cap`     DECIMAL(10,2) NULL DEFAULT NULL COMMENT 'shipping/shipping_percent only (flat cap on the discount)',
   `created_at`       VARCHAR(14)   NOT NULL COMMENT 'YYYYMMDDHHmmss',
