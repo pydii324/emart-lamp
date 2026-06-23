@@ -8,17 +8,13 @@
 
 | Среда | Кое |
 |---|---|
-| Нова среда (нищо промо-related няма) | **new/** 01 → 18 |
-| Среда, частично мигрирана с историческия път (dev, staging `emart.al`/`almarta`) | **old/** — довърши липсващите стъпки + **new/09** (drop voucher_remainer) + **new/10** (catalog SKUs), после **old/12→17 В РЕД**: `12` baza, `13` promo_fixed_discount, `14` създай регионален `cart_promo_codes`, `15` създай регионален `order_promo_codes`, `16` `shipping_percent` тип, `17` DROP на imartap `cart_promo_codes` (безопасно — **след** 14). Регионалният DB user иска SELECT/UPDATE на `imartap.promo_codes`. In-flight cart кодове се губят при cutover (transient); order история остава в imartap (preserved, не се drop-ва — per-region backfill е отделна задача) |
+| Нова среда (нищо промо-related няма) | **new/** 01 → 20 |
+| Среда, частично мигрирана с историческия път (dev, staging `emart.al`/`almarta`) | **old/** — довърши липсващите стъпки + **new/09** (drop voucher_remainer) + **new/10** (catalog SKUs), после **old/12→19 В РЕД**: `12` baza, `13` promo_fixed_discount, `14` създай регионален `cart_promo_codes`, `15` създай регионален `order_promo_codes`, `16` `shipping_percent` тип, `17` DROP на imartap `cart_promo_codes` (безопасно — **след** 14), `18` `discount_value` snapshot в `cart_promo_codes` (регионални), `19` `subtype` (imartap + регионални). Регионалният DB user иска SELECT/UPDATE на `imartap.promo_codes`. In-flight cart кодове се губят при cutover (transient); order история остава в imartap (preserved, не се drop-ва — per-region backfill е отделна задача) |
 
 Двата пътя завършват в **идентична schema**. Разлики на new/ спрямо old/:
 - `01`: финалната `promo_codes` директно (`times_used` вграден; БЕЗ `voucher_remainer` — voucher burn; никога не е имало `max_uses_per_user`); `CREATE TABLE IF NOT EXISTS` вместо `DROP + CREATE`.
-- `03`: `order_promo_codes` с вграден `used_by_employeeId` (в old/ идва от `11-add-used-by-employee.sql`).
-- `06`: `active = IF(data_validen > NOW, 1, 0)` — решението от Step 0 (в old/06 стои като open decision).
-- `09`: drop на `voucher_remainer` (voucher burn — issue #610, drago 08.06). No-op за fresh (01 вече без колоната); drop-ва я за бази мигрирани преди това.
-- `10`: seed на промо SKU продуктите в `catalog` (Микроинвест negative редове).
-- `11`/`12`: обединени verification скриптове (old/07 + old/10 + schema sanity).
-- Няма аналог на old/11 — вграден в 03.
+- `10`: `order_promo_codes` — **imartap AND регионални** (dual-write: imartap пръв, след това регионална копия); `used_by_employeeId` вграден. На imartap добавя FK → `porachki.porachki_id` и `promo_codes.id` (RESTRICT/RESTRICT); на регионали FK стъпките са no-op (DATABASE()≠'imartap'). В old/ имаше split: old/03 = само imartap (legacy), old/15 = само регионална — new/10 обединява двете.
+- `11`: обединени verification скриптове (old/07 + old/10 + schema sanity).
 
 ## Ред на изпълнение
 
@@ -35,13 +31,16 @@
 | 09 | 09-drop-voucher_remainer.sql | imartap | Voucher burn — drop на `promo_codes.voucher_remainer` (guard по column existence; no-op за fresh) |
 | 10 | 10-catalog-promo-skus.sql | **всички бази** | Seed на промо SKU продукти в `catalog` (5555555/6666666/7777777/8888888, `cena=0`) — Микроинвест negative редове; guard по table existence (no-op за imartap) |
 | 11 | 11-verification.sql | imartap | Data + schema sanity (само SELECT) |
-| 12 | 12-verify-per-db.sql | **всички бази** | Phase 2 колоните + липса на промо таблици per region (само SELECT) |
+| 11 | 11-verify-per-db.sql | **всички бази** | Phase 2 колоните + липса на промо таблици per region (само SELECT) |
+| 12 | 12-add-currency-column.sql | imartap | `site` → `ENUM('bg','ro','gr') NOT NULL` + `currency ENUM('BGN','RON','EUR') NOT NULL GENERATED` (auto-derived от site). **Prerequisite:** fix NULL/`'all'` site редове преди изпълнение. |
 | 13 | 13-add-baza-columns.sql | **всички бази** | Phase 1 колони `it_cena_baza`/`it_suma_baza` (item/item_l/item_no) + backfill — guard-нат, no-op при липсваща таблица/налична колона |
 | 14 | 14-create-cart_promo_codes-regional.sql | **регионални** (сега: inmarta) | `cart_promo_codes` в регионалната база, без cross-DB FK — issue #610 Q1 (пивотите се местят до количката; `promo_codes` остава каталог в imartap) |
 | 15 | 15-create-order_promo_codes-regional.sql | **регионални** (сега: inmarta) | `order_promo_codes` в регионалната база, без cross-DB FK — issue #610 Q1 |
 | 16 | 16-add-shipping_percent-type.sql | imartap + регионални | Нов тип `shipping_percent` (процент от доставка) в `promo_codes` + `cart_promo_codes` ENUM — issue #610 Q3; guard по COLUMN_TYPE, no-op при повторно изпълнение |
 | 17 | 17-add-promo-fixed-discount-cart.sql | **регионални** | `promo_fixed_discount` на `porachki_l`/`porachki_no` (mini-cart net total) — guard-нат, no-op за бази без cart headers |
 | 18 | 18-drop-imartap-cart_promo_codes.sql | imartap | DROP на legacy `cart_promo_codes` от imartap (Q1: пивотът е регионален). Guard `DATABASE()='imartap'` → no-op за региони; transient таблица → без загуба на данни. Пусни СЛЕД 14. |
+| 19 | 19-add-cart_promo_codes-discount_value.sql | **регионални** | `discount_value` snapshot в `cart_promo_codes` — позволява recalc и финализиране без cross-host catalog lookup. |
+| 20 | 20-add-subtype.sql | imartap + регионални | `subtype` ENUM('voucher','coupon') NULL на `promo_codes` + `cart_promo_codes` — разграничава ваучер (5555555) от купон (7777777) в Microinvest. |
 
 Всичко е идемпотентно — повторно изпълнение е no-op. **Внимание:** `CREATE TABLE IF NOT EXISTS`
 не пресъздава съществуваща таблица — за истински reset първо ръчно:
