@@ -46,10 +46,10 @@ imartap не са изравнени, този set покрива и двете.
 | 03 | `03-add-item-promo-columns.sql` | ✅ | ✅ | `item`/`item_l`/`item_no`: `discount_applied`, `it_cena_new`, `it_suma_new`, `item_br_new`, `promot_new` |
 | 04 | `04-add-porachki-promo-columns.sql` | ✅ | ✅ | `pordost_coupon_discount` (porachki/`_l`/`_no`) + `promo_fixed_discount` (`_l`/`_no`) |
 | 05 | `05-seed-catalog-promo-skus.sql` | ✅ | — | Промо SKU редове в `catalog` (5555555/6666666/7777777/8888888; cena=0, vidimost=0, p_acti=0) |
-| 06 | `06-create-imartap-promo_codes.sql` | — | ✅ | `promo_codes` (каталог / дефиниция — id master, споделен bg/ro/gr/al) |
+| 06 | `06-create-imartap-promo_codes.sql` | — | ✅ | `promo_codes` (каталог / дефиниция — id master, споделен между всички региони) |
 | 07 | `07-create-imartap-order_promo_codes.sql` | — | ✅ | `order_promo_codes` (imartap копие) **с** FK → `porachki.porachki_id` + `promo_codes.id` |
 | 08 | `08-seed-imartap-promo_codes.sql` | — | ✅ | `promo_codes` seed: по 1 example ред на тип (percent / fixed voucher / fixed coupon / shipping full / shipping capped / shipping_percent / lek voucher) |
-| 09 | `09-create-imartap-currency_rates.sql` | — | ✅ | `currency_rates` + 4 реда (BGN/EUR fixed, RON/ALL floating) |
+| 09 | `09-create-imartap-currency_rates.sql` | — | ✅ | `currency_rates` + 17 реда (BGN/EUR fixed; RON и 12 други от BNB; ALL/MDL/MKD/RSD ръчни) |
 | 10 | `10-verify.sql` | ✅ | ✅ | **Read-only.** Доказва какво реално е кацнало |
 
 **Защо 03/04 вървят и на двете:** `item` и `porachki` master-ите живеят в imartap, а
@@ -131,7 +131,7 @@ docker exec -i "$CT" mysql -u root -p<pass> -D "$DB" --table --force < 10-verify
 | `ERROR 1050 ... Table 'X' already exists` | Таблицата вече я има — `01`/`02`/`06`/`07`/`09` вече са минали, или базата не е от нула |
 | `ERROR 1060 ... Duplicate column name 'X'` | Колоната вече я има — `03`/`04` вече са минали за тази таблица |
 | `ERROR 1146 ... Table 'X' doesn't exist` | Пускаш файл срещу грешния target (напр. `01` срещу imartap, или `05` срещу база без `catalog`) |
-| `ERROR 1062 ... Duplicate entry` | `08`/`09` seed вече е минал (`promo_codes.code` е UNIQUE, `currency_rates.currency` е PK) |
+| `ERROR 1062 ... Duplicate entry` | `08`/`09` seed вече е минал (`promo_codes` има UNIQUE KEY (`code`,`site`), `currency_rates.currency` е PK) |
 | `ERROR 1215 ... Cannot add foreign key constraint` | `07` преди `06`, или `porachki` липсва в imartap |
 
 **⚠️ Единственото изключение — `05`:** `catalog` няма UNIQUE KEY на `cat_no`, така че
@@ -186,6 +186,21 @@ DROP TABLE IF EXISTS currency_rates;
 - **Charset.** Живата BG `catalog.ime` е корумпирана at-rest (mojibake, double-encoded с
   latin1 клиент). Файл 05 нарочно НЕ възпроизвежда бъга (`SET NAMES utf8mb4`).
 - `miarka` в seed-а е `бр.` (както в BG). Смени ако Албания ползва друг етикет.
-- `promo_codes.site` ENUM включва `'all'` — WILDCARD (валиден на всеки регион), в жива
-  употреба от служебните кодове. **Да не се бърка с `'al'` = Албания.**
+- `promo_codes.site` ENUM е с **37 региона** — **един регион на код, няма wildcard**.
+  Редът е `bg,ro,gr,al` (първоначалните четири, заковани на първите четири позиции —
+  ENUM пази пореден номер, не низ, така че пренареждане би преназначило всички
+  съществуващи редове) и след тях `en,md,at,cz,de,es,hr,hu,it,pl,si,sk,cy,uk,us,co,be,
+  dk,ee,fi,fr,lt,lv,nl,pt,se,mk,rs,ua,tr,ru,biz,org`. Списъкът трябва да е идентичен с
+  `PromoCode::SITES`. `en`/`biz`/`org` са storefront-и, не държави.
+  Старото `'all'` (валиден навсякъде) е пенсионирано: `lib/PromoCode.php` матчва региона
+  точно, а `deploy/08-retire-site-all-wildcard.sql` деактивира останалите служебни редове.
+  **`'al'` = Албания е истински регион** — една буква разлика от мъртвия wildcard.
+- Инстанция, която вече е на стария ENUM с четирите региона (или още е на
+  `VARCHAR(10)`), се мигрира с `mysql-dumps/deploy/10-extend-site-and-currency-enums.sql`.
+  Там `site` става **NULLable** — файлът паркира неконвертируемите стойности (wildcard-а,
+  печатните грешки) на `NULL`, вместо да ги загуби; `NULL` не матчва никой регион.
+- Нов регион = **три** промени, в този ред: ENUM-ът тук → `PromoCode::SITES` →
+  `PromoCode::SITE_CURRENCY`. Без валута the-marketer генераторът връща 500 за региона,
+  дори SITES да го приема за осребряване. Валутата трябва да е и в `currency` ENUM-а на
+  трите таблици, и като ред в `currency_rates` — иначе `toBgn()` пада на курс `1.0`.
 - Валута/site етикет за Албания различни? — това е на imartap каталог страна, отделна задача.

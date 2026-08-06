@@ -3,10 +3,11 @@
 -- Target: imartap ONLY. promo_codes is the shared catalog (see 06).
 -- Run: mysql -D imartap < 08-seed-imartap-promo_codes.sql   (AFTER 06)
 --
--- Plain SQL, no guards. Baseline: a DB with NOTHING promo-related. `promo_codes.code`
--- is UNIQUE, so a re-run (or a collision with an operator-created code of the same
--- name) fails with ERROR 1062 instead of silently duplicating — that error is the
--- signal. Nothing here ever overwrites an existing row.
+-- Plain SQL, no guards. Baseline: a DB with NOTHING promo-related. `promo_codes`
+-- has UNIQUE KEY (`code`,`site`), so a re-run (or a collision with an operator-
+-- created code of the same name in the same region) fails with ERROR 1062
+-- instead of silently duplicating — that error is the signal. Nothing here ever
+-- overwrites an existing row.
 --
 -- One example code for every distinct promo behaviour the storefront supports.
 -- These are ACTIVE, working codes (so a fresh install can be QA'd end-to-end).
@@ -24,7 +25,7 @@
 -- Catalog money-fields are authored in the code's own `currency`; lib/PromoCode.php
 -- converts them to the BGN cart at read time via currency_rates (EUR ×1.95583 fixed;
 -- BGN passthrough; ALL/lek ×manual rate). Set `currency` per code to 'BGN', 'EUR'
--- or 'ALL'. Codes 1-6 below are EUR examples (site = 'al', Albania); code 7 is an
+-- or 'ALL'. Codes 1-6 below are EUR examples (site = 'bg', Albania); code 7 is an
 -- 'ALL' (Albanian lek) example for lek testing. discount_value is monetary only for
 -- `fixed`; percent / shipping_percent hold a %, which is never converted.
 -- =============================================================================
@@ -42,10 +43,10 @@ SET NAMES utf8mb4;
 --                                        (500 * 0.0196 ≈ 9.80 BGN)
 INSERT INTO `promo_codes`
   (`code`, `type`, `subtype`, `discount_value`, `currency`, `min_subtotal`, `shipping_cap`, `max_uses`, `active`, `expiration_date`, `created_at`, `source`, `note`, `site`, `created_by`) VALUES
-  ('PERCENT10',     'percent',          NULL,      10.00, 'EUR', 0.00, NULL, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: 10% off cart subtotal (SKU 8888888)',   'al', 'fresh-seed'),
-  ('VOUCHER5',      'fixed',            'voucher',  5.00, 'EUR', 0.00, NULL, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: 5.00 fixed voucher (SKU 5555555)',      'al', 'fresh-seed'),
-  ('COUPON5',       'fixed',            'coupon',   5.00, 'EUR', 0.00, NULL, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: 5.00 fixed coupon (SKU 7777777)',       'al', 'fresh-seed'),
-  ('FREESHIP',      'shipping',         NULL,       0.00, 'EUR', 0.00, NULL, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: free shipping, uncapped (SKU 6666666)', 'al', 'fresh-seed'),
-  ('SHIPCAP3',      'shipping',         NULL,       0.00, 'EUR', 0.00, 3.00, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: up to 3.00 off shipping (SKU 6666666)', 'al', 'fresh-seed'),
-  ('SHIPPCT50',     'shipping_percent', NULL,      50.00, 'EUR', 0.00, NULL, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: 50% off shipping, uncapped',            'al', 'fresh-seed'),
-  ('VOUCHER500ALL', 'fixed',            'voucher', 500.00, 'ALL', 0.00, NULL, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: 500 lek fixed voucher (SKU 5555555)',  'al', 'fresh-seed');
+  ('PERCENT10',     'percent',          NULL,      10.00, 'EUR', 0.00, NULL, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: 10% off cart subtotal (SKU 8888888)',   'bg', 'fresh-seed'),
+  ('VOUCHER5',      'fixed',            'voucher',  5.00, 'EUR', 0.00, NULL, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: 5.00 fixed voucher (SKU 5555555)',      'bg', 'fresh-seed'),
+  ('COUPON5',       'fixed',            'coupon',   5.00, 'EUR', 0.00, NULL, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: 5.00 fixed coupon (SKU 7777777)',       'bg', 'fresh-seed'),
+  ('FREESHIP',      'shipping',         NULL,       0.00, 'EUR', 0.00, NULL, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: free shipping, uncapped (SKU 6666666)', 'bg', 'fresh-seed'),
+  ('SHIPCAP3',      'shipping',         NULL,       0.00, 'EUR', 0.00, 3.00, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: up to 3.00 off shipping (SKU 6666666)', 'bg', 'fresh-seed'),
+  ('SHIPPCT50',     'shipping_percent', NULL,      50.00, 'EUR', 0.00, NULL, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: 50% off shipping, uncapped',            'bg', 'fresh-seed'),
+  ('VOUCHER500ALL', 'fixed',            'voucher', 500.00, 'ALL', 0.00, NULL, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: 500 lek fixed voucher (SKU 5555555)',  'bg', 'fresh-seed');

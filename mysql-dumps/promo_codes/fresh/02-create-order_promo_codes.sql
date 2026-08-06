@@ -16,7 +16,11 @@ CREATE TABLE `order_promo_codes` (
   `promo_code_id`      INT           NOT NULL COMMENT 'imartap.promo_codes.id (no cross-DB FK)',
   `klienti_id`         INT           NOT NULL DEFAULT '0' COMMENT '0 = guest',
   `discount_applied`   DECIMAL(10,2) NOT NULL,
-  `currency`           ENUM('BGN','EUR','ALL','RON') NOT NULL DEFAULT 'BGN' COMMENT 'snapshot of promo_codes.currency at order-finalize',
+  -- Mirrors promo_codes.currency (fresh/06) — keep the two lists identical, in
+  -- the same order (ENUM stores an ordinal; new currencies are APPENDED only).
+  `currency`           ENUM('BGN','EUR','ALL','RON',
+                            'CZK','DKK','GBP','HUF','MDL','MKD','PLN','RSD','RUB','SEK','TRY','UAH','USD')
+                       NOT NULL DEFAULT 'BGN' COMMENT 'snapshot of promo_codes.currency at order-finalize',
   `used_by_employeeId` INT           DEFAULT NULL COMMENT 'admin/backoffice app — storefront leaves NULL',
   `created_at`         VARCHAR(14)   NOT NULL COMMENT 'YYYYMMDDHHmmss',
 

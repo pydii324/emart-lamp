@@ -83,16 +83,29 @@ GROUP BY TABLE_NAME
 ORDER BY TABLE_NAME;
 
 
--- ── E. currency ENUMs carry all four currencies ─────────────────────────────
--- promo_codes / cart_promo_codes / order_promo_codes must all read
--- enum('BGN','EUR','ALL','RON'). A short ENUM truncates non-BGN codes on write.
+-- ── E. currency ENUMs carry all 17 currencies ───────────────────────────────
+-- promo_codes / cart_promo_codes / order_promo_codes must all declare the same
+-- 17 currencies — the four originals BGN/EUR/ALL/RON first (an ENUM stores an
+-- ordinal, so those positions are frozen) plus the 13 appended for the non-euro
+-- regions. A short ENUM truncates a code in a missing currency on write, and a
+-- pivot whose list is shorter than promo_codes' silently loses the snapshot.
+-- An instance still on the old four: mysql-dumps/deploy/10-extend-site-and-
+-- currency-enums.sql.
 SELECT
   'E. currency ENUM' AS `check`,
   TABLE_NAME         AS `table`,
+  (LENGTH(COLUMN_TYPE) - LENGTH(REPLACE(COLUMN_TYPE, ',', ''))) + 1 AS `values`,
   COLUMN_TYPE        AS `enum`,
-  IF(COLUMN_TYPE LIKE '%BGN%' AND COLUMN_TYPE LIKE '%EUR%'
-     AND COLUMN_TYPE LIKE '%ALL%' AND COLUMN_TYPE LIKE '%RON%',
-     'OK', 'FAIL — missing a currency') AS `result`
+  -- Width is tested BEFORE order: an instance still on the old four-value ENUM
+  -- has no comma after 'RON' and would otherwise be reported as mis-ordered
+  -- rather than as short, which sends you looking for the wrong problem.
+  CASE
+    WHEN (LENGTH(COLUMN_TYPE) - LENGTH(REPLACE(COLUMN_TYPE, ',', ''))) + 1 <> 17
+      THEN 'FAIL — missing a currency (deploy/10 not run?)'
+    WHEN COLUMN_TYPE NOT LIKE 'enum(\'BGN\',\'EUR\',\'ALL\',\'RON\',%'
+      THEN 'FAIL — the four original currencies must stay first, in order'
+    ELSE 'OK'
+  END AS `result`
 FROM information_schema.COLUMNS
 WHERE TABLE_SCHEMA = DATABASE()
   AND COLUMN_NAME = 'currency'
@@ -100,19 +113,40 @@ WHERE TABLE_SCHEMA = DATABASE()
 ORDER BY TABLE_NAME;
 
 
--- ── F. promo_codes.site ENUM must include the 'all' wildcard ────────────────
--- 'all' = every region (staff codes). NOT the same as 'al' = Albania.
--- 06 ships ENUM('bg','ro','gr','al','all'). Note some older DBs (dev imartap)
--- carry `site` as VARCHAR instead — that stores 'all' fine but enforces nothing,
--- so a typo'd region is silently accepted. Flagged separately below.
+-- ── F. promo_codes.site ENUM — 37 regions, and no retired 'all' wildcard ────
+-- 'all' used to mean "valid on every region"; it was retired (lib/PromoCode.php
+-- matches the region exactly now, deploy/08 deactivated the leftover rows), so
+-- 06 ships the 37 storefront regions and nothing else. 'al' = Albania is a real
+-- region — one letter away — and must stay. bg/ro/gr/al are the original four
+-- and stay in the first four ENUM positions: the column stores an ordinal, so
+-- reordering would remap every existing row to a different region.
+--
+-- The list must equal PromoCode::SITES — a region the ENUM has but the PHP does
+-- not is unredeemable, and one the PHP has but the ENUM does not cannot even be
+-- written. This check only counts values; the PHP side is the authority on which
+-- ones. Note some older DBs (dev imartap) carry `site` as VARCHAR instead: that
+-- enforces nothing, so a typo'd region is silently accepted and simply yields a
+-- code no storefront can redeem. An instance still on the four-region ENUM:
+-- mysql-dumps/deploy/10-extend-site-and-currency-enums.sql.
+--
+-- `site` is NOT NULL here but NULLable on an instance migrated by deploy/10 —
+-- that file parks unconvertible legacy values (the 'all' wildcard, typos) on
+-- NULL rather than losing them. Both shapes are fine: NULL matches no region.
 SELECT
-  'F. site ENUM has wildcard' AS `check`,
-  DATA_TYPE                   AS `data_type`,
-  COLUMN_TYPE                 AS `declared_as`,
+  'F. site ENUM' AS `check`,
+  DATA_TYPE      AS `data_type`,
+  (LENGTH(COLUMN_TYPE) - LENGTH(REPLACE(COLUMN_TYPE, ',', ''))) + 1 AS `values`,
+  COLUMN_TYPE    AS `declared_as`,
   CASE
-    WHEN DATA_TYPE <> 'enum'            THEN CONCAT('WARN — not an ENUM, no region enforced: ', COLUMN_TYPE)
-    WHEN COLUMN_TYPE LIKE '%\'all\'%'   THEN 'OK'
-    ELSE 'FAIL — ENUM lacks the all wildcard, staff codes truncate on write'
+    WHEN DATA_TYPE <> 'enum'          THEN CONCAT('WARN — not an ENUM, no region enforced: ', COLUMN_TYPE)
+    WHEN COLUMN_TYPE LIKE '%\'all\'%' THEN 'FAIL — retired wildcard still declared'
+    -- Width before order, same reason as check E: the old four-region ENUM ends
+    -- at 'al' with no comma and must be reported as short, not as mis-ordered.
+    WHEN (LENGTH(COLUMN_TYPE) - LENGTH(REPLACE(COLUMN_TYPE, ',', ''))) + 1 <> 37
+      THEN 'FAIL — region list is out of sync with PromoCode::SITES (deploy/10 not run?)'
+    WHEN COLUMN_TYPE NOT LIKE 'enum(\'bg\',\'ro\',\'gr\',\'al\',%'
+      THEN 'FAIL — the four original regions must stay first, in order'
+    ELSE 'OK'
   END AS `result`
 FROM information_schema.COLUMNS
 WHERE TABLE_SCHEMA = DATABASE()

@@ -18,7 +18,11 @@ CREATE TABLE `cart_promo_codes` (
   `code`             VARCHAR(50)   NOT NULL,
   `discount_applied` DECIMAL(10,2) NOT NULL DEFAULT '0.00' COMMENT '0 for shipping types — real deduction for percent/fixed',
   `discount_value`   DECIMAL(10,2) NOT NULL DEFAULT '0.00' COMMENT 'snapshot of promo_codes.discount_value at apply-time',
-  `currency`         ENUM('BGN','EUR','ALL','RON') NOT NULL DEFAULT 'BGN' COMMENT 'snapshot of promo_codes.currency at apply-time',
+  -- Mirrors promo_codes.currency (fresh/06) — keep the two lists identical, in
+  -- the same order (ENUM stores an ordinal; new currencies are APPENDED only).
+  `currency`         ENUM('BGN','EUR','ALL','RON',
+                          'CZK','DKK','GBP','HUF','MDL','MKD','PLN','RSD','RUB','SEK','TRY','UAH','USD')
+                     NOT NULL DEFAULT 'BGN' COMMENT 'snapshot of promo_codes.currency at apply-time',
   `type`             ENUM('percent','fixed','shipping','shipping_percent') NOT NULL,
   `subtype`          ENUM('voucher','coupon') DEFAULT NULL,
   `shipping_cap`     DECIMAL(10,2) DEFAULT NULL COMMENT 'shipping/shipping_percent only (flat cap on the discount)',
