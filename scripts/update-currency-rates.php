@@ -3,19 +3,21 @@
 /**
  * update-currency-rates.php — refresh FLOATING FX rates in imartap.currency_rates.
  *
- * Base currency is BGN. currency_rates.rate_to_bgn = how many BGN one unit of the
+ * Base currency is EUR. currency_rates.rate_to_eur = how many EUR one unit of the
  * currency buys. lib/PromoCode.php reads it to convert promo money-fields from the
- * code's currency → BGN at the catalog read boundary.
+ * code's currency → EUR at the catalog read boundary.
  *
- * Only is_fixed = 0 rows are touched — BGN and EUR are legally fixed (irrevocable)
- * and are NEVER fetched or overwritten. Which currencies get refreshed is driven
- * by the floating rows already in the table, so adding a new floating currency is
- * a data change (INSERT a row), not a code change.
+ * Only is_fixed = 0 rows are touched — EUR (the base, 1.0) and BGN (the
+ * irrevocable 1/1.95583) are legally fixed and are NEVER fetched or overwritten.
+ * Which currencies get refreshed is driven by the floating rows already in the
+ * table, so adding a new floating currency is a data change (INSERT a row), not a
+ * code change.
  *
  * Provider: BNB (Bulgarian National Bank) daily fixing XML — free, no key. Since
  * the euro adoption the feed is EUR-based (EUR is not listed — it IS the base):
  * per ROW, REVERSERATE = EUR for 1 unit of the currency, RATE = units per 1 EUR.
- * BGN is fixed to EUR at 1.95583, so rate_to_bgn = REVERSERATE * 1.95583. Swap
+ * The table's base is EUR too, so rate_to_eur = REVERSERATE verbatim — the old
+ * `* 1.95583` hop into leva is gone, and with it a rounding step. Swap
  * fetch_bnb_rates() for ECB/frankfurter to cover any currency BNB omits.
  *
  * Safe by design: on any provider/parse failure NOTHING is written (last values
@@ -33,8 +35,10 @@ if (PHP_SAPI !== 'cli') { http_response_code(404); exit(1); } // never over HTTP
 
 const BNB_XML_URL = 'https://www.bnb.bg/Statistics/StExternalSector/StExchangeRates/StERForeignCurrencies/index.htm?download=xml&search=&lang=EN';
 
-// Irrevocable BGN adoption rate (mirrors PromoCode::EUR_TO_BGN). The BNB feed is
-// EUR-based, so BGN amounts are derived through this fixed factor.
+// Irrevocable BGN adoption rate (mirrors PromoCode::EUR_TO_BGN). No longer used
+// for conversion — the table's base is EUR and so is the BNB feed — but kept as
+// the documented value of the one fixed pair, and as the factor to reach for if
+// a leva figure is ever needed again.
 const EUR_TO_BGN = 1.95583;
 
 $dryRun = in_array('--dry-run', $argv, true);
@@ -57,7 +61,7 @@ mysqli_query($db, "SET NAMES 'utf8mb4';");
 
 // ── Which currencies to refresh (BNB-sourced floating rows only) ──────────────
 // is_fixed = 0 AND source = 'bnb': this is the BNB job, so it only ever touches
-// rows it owns. is_fixed rows (BGN/EUR) are legally fixed; source='manual' rows
+// rows it owns. is_fixed rows (EUR base, BGN) are legally fixed; source='manual' rows
 // (e.g. ALL — BNB does not publish Albanian lek) are maintained by hand and must
 // stay untouched even if BNB ever starts listing them (migration 17 §comment).
 $targets = [];
@@ -66,7 +70,7 @@ if (!$r) { logln('FATAL: currency_rates unavailable: ' . mysqli_error($db)); exi
 while ($row = mysqli_fetch_row($r)) $targets[] = strtoupper($row[0]);
 if (!$targets) { logln('No floating currencies to update. Done.'); exit(0); }
 
-// ── Fetch provider rates: [ISO code => rate_to_bgn] ───────────────────────────
+// ── Fetch provider rates: [ISO code => rate_to_eur] ───────────────────────────
 $rates = fetch_bnb_rates();
 if ($rates === null) { logln('WARN: provider fetch failed — keeping last values.'); exit(2); }
 
@@ -75,12 +79,12 @@ $updated = 0; $missing = [];
 foreach ($targets as $cur) {
     if (!isset($rates[$cur])) { $missing[] = $cur; continue; }
     $rateSql = number_format($rates[$cur], 8, '.', '');
-    if ($dryRun) { logln(sprintf('DRY-RUN %s -> %s BGN', $cur, $rateSql)); $updated++; continue; }
+    if ($dryRun) { logln(sprintf('DRY-RUN %s -> %s EUR', $cur, $rateSql)); $updated++; continue; }
     $curEsc = mysqli_real_escape_string($db, $cur);
     $ok = mysqli_query($db,
-        "UPDATE currency_rates SET rate_to_bgn = '$rateSql', updated_at = NOW(), source = 'bnb'
+        "UPDATE currency_rates SET rate_to_eur = '$rateSql', updated_at = NOW(), source = 'bnb'
           WHERE currency = '$curEsc' AND is_fixed = 0 AND source = 'bnb';");
-    if ($ok) { $updated++; logln(sprintf('%s -> %s BGN', $cur, $rateSql)); }
+    if ($ok) { $updated++; logln(sprintf('%s -> %s EUR', $cur, $rateSql)); }
     else       logln("ERROR updating $cur: " . mysqli_error($db));
 }
 if ($missing) logln('WARN: provider had no rate for: ' . implode(', ', $missing) . ' (left unchanged).');
@@ -90,14 +94,14 @@ exit(0);
 // ═════════════════════════════════════════════════════════════════════════════
 
 /**
- * BNB daily fixing XML → [ISO code => rate_to_bgn].
+ * BNB daily fixing XML → [ISO code => rate_to_eur].
  *
  * Post euro-adoption the feed is EUR-based (verified against the live feed
  * 2026-07-20): ROWSET > ROW, each with CODE, REVERSERATE (= EUR per 1 unit of
  * the currency) and RATE (= units per 1 EUR). EUR itself is not listed — it is
- * the base. BGN is fixed to EUR at 1.95583, so rate_to_bgn = REVERSERATE *
- * EUR_TO_BGN (fallback: (1 / RATE) * EUR_TO_BGN). The first ROW is a header
- * whose CODE is the literal "Code" — dropped by the 3-char guard.
+ * the base, on both sides — so rate_to_eur = REVERSERATE verbatim (fallback:
+ * 1 / RATE). The first ROW is a header whose CODE is the literal "Code" —
+ * dropped by the 3-char guard.
  *
  * Returns null on network/parse failure so the caller keeps the last values.
  * Replace this single function to switch providers.
@@ -112,7 +116,7 @@ function fetch_bnb_rates(): ?array {
     // BNB ROWSET/ROW, EUR-based (EUR itself is not listed — it is the base):
     //   REVERSERATE = EUR for 1 unit of the currency   (preferred)
     //   RATE        = units of the currency for 1 EUR   (fallback: 1/RATE)
-    // BGN is fixed to EUR, so rate_to_bgn = (EUR per unit) * EUR_TO_BGN.
+    // The table is EUR-based too, so REVERSERATE IS rate_to_eur — no scaling.
     $out = [];
     foreach ($doc->ROW as $row) {
         $code = strtoupper(trim((string)$row->CODE));
@@ -123,7 +127,7 @@ function fetch_bnb_rates(): ?array {
             if ($unitsPerEur > 0) $eurPerUnit = 1.0 / $unitsPerEur;
         }
         if ($eurPerUnit <= 0) continue;
-        $out[$code] = round($eurPerUnit * EUR_TO_BGN, 8);
+        $out[$code] = round($eurPerUnit, 8);
     }
     return $out ?: null;
 }

@@ -83,14 +83,23 @@ GROUP BY TABLE_NAME
 ORDER BY TABLE_NAME;
 
 
--- ── E. currency ENUMs carry all 17 currencies ───────────────────────────────
+-- ── E. currency ENUMs carry all 18 currencies ───────────────────────────────
 -- promo_codes / cart_promo_codes / order_promo_codes must all declare the same
--- 17 currencies — the four originals BGN/EUR/ALL/RON first (an ENUM stores an
--- ordinal, so those positions are frozen) plus the 13 appended for the non-euro
--- regions. A short ENUM truncates a code in a missing currency on write, and a
--- pivot whose list is shorter than promo_codes' silently loses the snapshot.
--- An instance still on the old four: mysql-dumps/deploy/10-extend-site-and-
--- currency-enums.sql.
+-- 18 currencies — the four originals BGN/EUR/ALL/RON first, then the 14 appended
+-- for the non-euro regions. A short ENUM truncates a code in a missing currency
+-- on write, and a pivot whose list is shorter than promo_codes' silently loses
+-- the snapshot. An instance still on the old four: mysql-dumps/deploy/10-extend-
+-- site-and-currency-enums.sql.
+--
+-- BGN must stay declared even though NO region authors in it any more ('bg' is
+-- EUR — Bulgaria is euro-only). It is the currency the cart is priced in, the
+-- base every currency_rates row converts into, and the value every legacy code
+-- and past order snapshot still holds.
+--
+-- The order check below is about drift, not data: MySQL converts an ENUM column
+-- by the value's STRING, so a differently-ordered list still holds the right
+-- values — but it diverges from every other instance and costs a full table copy
+-- on the next ALTER instead of an in-place change.
 SELECT
   'E. currency ENUM' AS `check`,
   TABLE_NAME         AS `table`,
@@ -100,10 +109,10 @@ SELECT
   -- has no comma after 'RON' and would otherwise be reported as mis-ordered
   -- rather than as short, which sends you looking for the wrong problem.
   CASE
-    WHEN (LENGTH(COLUMN_TYPE) - LENGTH(REPLACE(COLUMN_TYPE, ',', ''))) + 1 <> 17
+    WHEN (LENGTH(COLUMN_TYPE) - LENGTH(REPLACE(COLUMN_TYPE, ',', ''))) + 1 <> 18
       THEN 'FAIL — missing a currency (deploy/10 not run?)'
     WHEN COLUMN_TYPE NOT LIKE 'enum(\'BGN\',\'EUR\',\'ALL\',\'RON\',%'
-      THEN 'FAIL — the four original currencies must stay first, in order'
+      THEN 'WARN — declaration order drifted from the other instances'
     ELSE 'OK'
   END AS `result`
 FROM information_schema.COLUMNS
@@ -118,8 +127,8 @@ ORDER BY TABLE_NAME;
 -- matches the region exactly now, deploy/08 deactivated the leftover rows), so
 -- 06 ships the 37 storefront regions and nothing else. 'al' = Albania is a real
 -- region — one letter away — and must stay. bg/ro/gr/al are the original four
--- and stay in the first four ENUM positions: the column stores an ordinal, so
--- reordering would remap every existing row to a different region.
+-- and stay in the first four ENUM positions — see check E on why that is a drift
+-- check and not a data-integrity one. Note 'co' is Canada, not the .co TLD.
 --
 -- The list must equal PromoCode::SITES — a region the ENUM has but the PHP does
 -- not is unredeemable, and one the PHP has but the ENUM does not cannot even be
@@ -145,7 +154,7 @@ SELECT
     WHEN (LENGTH(COLUMN_TYPE) - LENGTH(REPLACE(COLUMN_TYPE, ',', ''))) + 1 <> 37
       THEN 'FAIL — region list is out of sync with PromoCode::SITES (deploy/10 not run?)'
     WHEN COLUMN_TYPE NOT LIKE 'enum(\'bg\',\'ro\',\'gr\',\'al\',%'
-      THEN 'FAIL — the four original regions must stay first, in order'
+      THEN 'WARN — declaration order drifted from the other instances'
     ELSE 'OK'
   END AS `result`
 FROM information_schema.COLUMNS
@@ -181,12 +190,49 @@ ORDER BY k.CONSTRAINT_NAME;
 -- =============================================================================
 
 
--- ── H. currency_rates seed — expect 4 rows ───────────────────── IMARTAP ONLY ─
--- BGN/EUR is_fixed=1 (updater must skip); RON/ALL is_fixed=0 (floating).
+-- ── H. currency_rates seed — expect 18 rows ──────────────────── IMARTAP ONLY ─
+-- Base is EUR: `rate_to_eur` = how many EUR one unit of the currency buys.
+-- EUR/BGN is_fixed=1 (updater must skip — EUR is the base at 1.0, BGN the
+-- irrevocable 0.51129188); everything else is_fixed=0 (floating).
+-- An instance still showing `rate_to_bgn` errors here with ERROR 1054 and wants
+-- mysql-dumps/deploy/11-rebase-currency-rates-to-eur.sql.
 SELECT 'H. currency_rates' AS `check`,
-       `currency`, `rate_to_bgn`, `is_fixed`, `source`, `updated_at`
+       `currency`, `rate_to_eur`, `is_fixed`, `source`, `updated_at`
 FROM `currency_rates`
 ORDER BY `is_fixed` DESC, `currency`;
+
+
+-- ── H2. every authorable currency has a rate row ─────────────── IMARTAP ONLY ─
+-- PromoCode::toEur() falls back to rate 1.0 for a currency with no row, i.e. it
+-- treats the amount as already-EUR: a `fixed` HUF code would deduct its face
+-- value in euro. Expect 0 rows.
+SELECT
+  'H2. currency without a rate' AS `check`,
+  p.`currency`,
+  COUNT(*)                      AS `codes`,
+  'FAIL — add a currency_rates row before authoring in this currency' AS `result`
+FROM `promo_codes` p
+WHERE NOT EXISTS (SELECT 1 FROM `currency_rates` r WHERE r.`currency` = p.`currency`)
+GROUP BY p.`currency`;
+
+
+-- ── H3. the base is EUR and is exactly 1.0 ───────────────────── IMARTAP ONLY ─
+-- If EUR is anything but 1.00000000 every converted amount is scaled by that
+-- factor. BGN must be the irrevocable 1/1.95583 and flagged fixed, or the nightly
+-- BNB job will try to fetch a currency its feed no longer lists.
+SELECT
+  'H3. fixed anchors' AS `check`,
+  `currency`,
+  `rate_to_eur`,
+  `is_fixed`,
+  CASE
+    WHEN `currency` = 'EUR' AND `rate_to_eur` = 1.00000000 AND `is_fixed` = 1 THEN 'OK'
+    WHEN `currency` = 'BGN' AND `rate_to_eur` = 0.51129188 AND `is_fixed` = 1 THEN 'OK'
+    ELSE 'FAIL — anchor rate or is_fixed flag is wrong (deploy/11 not run?)'
+  END AS `result`
+FROM `currency_rates`
+WHERE `currency` IN ('EUR','BGN')
+ORDER BY `currency`;
 
 
 -- ── I. promo_codes seed — expect 7 rows, one per behaviour ───── IMARTAP ONLY ─

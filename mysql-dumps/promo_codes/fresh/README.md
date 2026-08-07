@@ -49,7 +49,7 @@ imartap не са изравнени, този set покрива и двете.
 | 06 | `06-create-imartap-promo_codes.sql` | — | ✅ | `promo_codes` (каталог / дефиниция — id master, споделен между всички региони) |
 | 07 | `07-create-imartap-order_promo_codes.sql` | — | ✅ | `order_promo_codes` (imartap копие) **с** FK → `porachki.porachki_id` + `promo_codes.id` |
 | 08 | `08-seed-imartap-promo_codes.sql` | — | ✅ | `promo_codes` seed: по 1 example ред на тип (percent / fixed voucher / fixed coupon / shipping full / shipping capped / shipping_percent / lek voucher) |
-| 09 | `09-create-imartap-currency_rates.sql` | — | ✅ | `currency_rates` + 17 реда (BGN/EUR fixed; RON и 12 други от BNB; ALL/MDL/MKD/RSD ръчни) |
+| 09 | `09-create-imartap-currency_rates.sql` | — | ✅ | `currency_rates` + 18 реда (EUR база 1.0 + BGN fixed; RON и 13 други от BNB; ALL/MDL/MKD/RSD ръчни) |
 | 10 | `10-verify.sql` | ✅ | ✅ | **Read-only.** Доказва какво реално е кацнало |
 
 **Защо 03/04 вървят и на двете:** `item` и `porachki` master-ите живеят в imartap, а
@@ -73,9 +73,9 @@ imartap:           00 → 03 → 04 → 06 → 09 → 07 → 08 → 10
 
 - **06 преди 07** — FK-ът `fk_opc_promo_code_id` сочи `promo_codes.id`.
 - **06 преди 08** — 08 seed-ва в `promo_codes`.
-- **09 преди 08** — не е схемна зависимост, а практическа: EUR/лек кодовете от 08 се
-  конвертират към BGN през `currency_rates`; ако таблицата липсва,
-  `PromoCode::toBgn()` мълчаливо пада на 1.0 и seed-ът изглежда счупен при първия тест.
+- **09 преди 08** — не е схемна зависимост, а практическа: лек/не-евро кодовете от 08 се
+  конвертират към EUR през `currency_rates`; ако таблицата липсва,
+  `PromoCode::toEur()` мълчаливо пада на 1.0 и seed-ът изглежда счупен при първия тест.
 - `porachki` (от основната схема) трябва да съществува в imartap за 07.
 
 Регионалната няма вътрешни зависимости — 01→05 е просто удобен ред.
@@ -187,11 +187,14 @@ DROP TABLE IF EXISTS currency_rates;
   latin1 клиент). Файл 05 нарочно НЕ възпроизвежда бъга (`SET NAMES utf8mb4`).
 - `miarka` в seed-а е `бр.` (както в BG). Смени ако Албания ползва друг етикет.
 - `promo_codes.site` ENUM е с **37 региона** — **един регион на код, няма wildcard**.
-  Редът е `bg,ro,gr,al` (първоначалните четири, заковани на първите четири позиции —
-  ENUM пази пореден номер, не низ, така че пренареждане би преназначило всички
-  съществуващи редове) и след тях `en,md,at,cz,de,es,hr,hu,it,pl,si,sk,cy,uk,us,co,be,
-  dk,ee,fi,fr,lt,lv,nl,pt,se,mk,rs,ua,tr,ru,biz,org`. Списъкът трябва да е идентичен с
-  `PromoCode::SITES`. `en`/`biz`/`org` са storefront-и, не държави.
+  Редът е `bg,ro,gr,al` (първоначалните четири, на първите четири позиции) и след тях
+  `en,md,at,cz,de,es,hr,hu,it,pl,si,sk,cy,uk,us,co,be,dk,ee,fi,fr,lt,lv,nl,pt,se,mk,rs,
+  ua,tr,ru,biz,org`. Списъкът трябва да е идентичен с `PromoCode::SITES`.
+  Нови региони се **добавят накрая**: MySQL конвертира ENUM по низа на стойността, така
+  че вмъкване по средата не разваля данни, но налага `ALGORITHM=COPY` (пълно
+  пренаписване на таблицата) вместо in-place промяна, и чупи сравнението на `COLUMN_TYPE`,
+  на което стъпва `10-verify.sql`.
+  `en`/`biz`/`org` са storefront-и, не държави. **`co` = Канада** (CAD), не .co TLD.
   Старото `'all'` (валиден навсякъде) е пенсионирано: `lib/PromoCode.php` матчва региона
   точно, а `deploy/08-retire-site-all-wildcard.sql` деактивира останалите служебни редове.
   **`'al'` = Албания е истински регион** — една буква разлика от мъртвия wildcard.
@@ -202,5 +205,23 @@ DROP TABLE IF EXISTS currency_rates;
 - Нов регион = **три** промени, в този ред: ENUM-ът тук → `PromoCode::SITES` →
   `PromoCode::SITE_CURRENCY`. Без валута the-marketer генераторът връща 500 за региона,
   дори SITES да го приема за осребряване. Валутата трябва да е и в `currency` ENUM-а на
-  трите таблици, и като ред в `currency_rates` — иначе `toBgn()` пада на курс `1.0`.
+  трите таблици, и като ред в `currency_rates` — иначе `toEur()` пада на курс `1.0`.
+- **Базовата валута е `EUR`.** Количката е в евро, `currency_rates.rate_to_eur` е „колко
+  евро купува 1 единица", а `PromoCode::toEur()` нормализира всяко парично поле към нея.
+  `bg` също пише в `EUR` (България е само евро), тоест bg код изобщо не се конвертира.
+  **BGN не изчезва** — става обикновена законово фиксирана валута на `1/1.95583 =
+  0.51129188`, със запазена стойност в ENUM-а и ред в `currency_rates`, защото старите
+  BGN кодове и всички минали поръчки още ги сочат. Стар код за 19.56 BGN приспада точно
+  10.00 EUR.
+- Инстанция отпреди смяната се ре-базира с
+  `mysql-dumps/deploy/11-rebase-currency-rates-to-eur.sql`, който **задължително върви
+  ПРЕДИ deploy/10** (D.2 там пише `rate_to_eur` и иначе гърми с `ERROR 1054`).
+- **⚠ Ре-базирането НЕ конвертира записаните суми.** deploy/11 пипа само таблицата с
+  курсове. Голите парични колони, писани докато количката беше в лева —
+  `cart_promo_codes.discount_value`, `order_promo_codes.discount_applied`,
+  `porachki.pordost_coupon_discount` / `promo_fixed_discount` — нямат собствена валута,
+  тъй че стара поръчка, прочетена след смяната, излиза 1.95583× по-голяма. (Редовете в
+  `promo_codes` са наред — те носят своята `currency`.) Конвертирането им е отделна
+  data миграция със свой cut-over въпрос; замрази промо записите по време на смяната,
+  за да има чиста граница.
 - Валута/site етикет за Албания различни? — това е на imartap каталог страна, отделна задача.

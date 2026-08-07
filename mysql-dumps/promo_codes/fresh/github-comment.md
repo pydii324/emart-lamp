@@ -251,11 +251,14 @@ CREATE TABLE `cart_promo_codes` (
   `code`             VARCHAR(50)   NOT NULL,
   `discount_applied` DECIMAL(10,2) NOT NULL DEFAULT '0.00' COMMENT '0 for shipping types — real deduction for percent/fixed',
   `discount_value`   DECIMAL(10,2) NOT NULL DEFAULT '0.00' COMMENT 'snapshot of promo_codes.discount_value at apply-time',
-  -- Mirrors promo_codes.currency (fresh/06) — keep the two lists identical, in
-  -- the same order (ENUM stores an ordinal; new currencies are APPENDED only).
+  -- Mirrors promo_codes.currency (fresh/06) — keep the two lists identical and
+  -- in the same order, and APPEND new currencies rather than inserting them
+  -- mid-list: MySQL converts ENUM values by string so nothing is remapped
+  -- either way, but a mid-list insert forces ALGORITHM=COPY (full rebuild)
+  -- where an append is in-place and LOCK=NONE.
   `currency`         ENUM('BGN','EUR','ALL','RON',
-                          'CZK','DKK','GBP','HUF','MDL','MKD','PLN','RSD','RUB','SEK','TRY','UAH','USD')
-                     NOT NULL DEFAULT 'BGN' COMMENT 'snapshot of promo_codes.currency at apply-time',
+                          'CZK','DKK','GBP','HUF','MDL','MKD','PLN','RSD','RUB','SEK','TRY','UAH','USD','CAD')
+                     NOT NULL DEFAULT 'EUR' COMMENT 'snapshot of promo_codes.currency at apply-time',
   `type`             ENUM('percent','fixed','shipping','shipping_percent') NOT NULL,
   `subtype`          ENUM('voucher','coupon') DEFAULT NULL,
   `shipping_cap`     DECIMAL(10,2) DEFAULT NULL COMMENT 'shipping/shipping_percent only (flat cap on the discount)',
@@ -291,11 +294,14 @@ CREATE TABLE `order_promo_codes` (
   `promo_code_id`      INT           NOT NULL COMMENT 'imartap.promo_codes.id (no cross-DB FK)',
   `klienti_id`         INT           NOT NULL DEFAULT '0' COMMENT '0 = guest',
   `discount_applied`   DECIMAL(10,2) NOT NULL,
-  -- Mirrors promo_codes.currency (fresh/06) — keep the two lists identical, in
-  -- the same order (ENUM stores an ordinal; new currencies are APPENDED only).
+  -- Mirrors promo_codes.currency (fresh/06) — keep the two lists identical and
+  -- in the same order, and APPEND new currencies rather than inserting them
+  -- mid-list: MySQL converts ENUM values by string so nothing is remapped
+  -- either way, but a mid-list insert forces ALGORITHM=COPY (full rebuild)
+  -- where an append is in-place and LOCK=NONE.
   `currency`           ENUM('BGN','EUR','ALL','RON',
-                            'CZK','DKK','GBP','HUF','MDL','MKD','PLN','RSD','RUB','SEK','TRY','UAH','USD')
-                       NOT NULL DEFAULT 'BGN' COMMENT 'snapshot of promo_codes.currency at order-finalize',
+                            'CZK','DKK','GBP','HUF','MDL','MKD','PLN','RSD','RUB','SEK','TRY','UAH','USD','CAD')
+                       NOT NULL DEFAULT 'EUR' COMMENT 'snapshot of promo_codes.currency at order-finalize',
   `used_by_employeeId` INT           DEFAULT NULL COMMENT 'admin/backoffice app — storefront leaves NULL',
   `created_at`         VARCHAR(14)   NOT NULL COMMENT 'YYYYMMDDHHmmss',
 
@@ -467,13 +473,20 @@ CREATE TABLE `promo_codes` (
   `discount_value`  DECIMAL(10,2) NOT NULL,
   -- One currency per region — see PromoCode::SITE_CURRENCY, which is the single
   -- source of truth for the site → currency mapping. Every value here MUST also
-  -- have a `currency_rates` row (file 09) or PromoCode::toBgn() silently falls
-  -- back to rate 1.0 and a `fixed` code is deducted at its face value in BGN.
-  -- The first four are the original set; the rest were appended (never reordered
-  -- — an ENUM stores an ordinal, so reordering rewrites every existing row).
+  -- have a `currency_rates` row (file 09) or PromoCode::toEur() silently falls
+  -- back to rate 1.0 and a `fixed` code is deducted at its face value in EUR.
+  -- The first four are the original set and the rest were APPENDED. Keep adding
+  -- at the end: MySQL converts ENUM values by string, so a mid-list insert does
+  -- not remap anything, but it forces ALGORITHM=COPY (a full table rebuild)
+  -- where an append is in-place and LOCK=NONE.
+  -- No region maps to BGN any more (Bulgaria is euro-only — PromoCode::
+  -- SITE_CURRENCY['bg'] is 'EUR') and BGN is no longer the base either; EUR is,
+  -- both here and in currency_rates. The value stays because old codes and every
+  -- past order snapshot reference it — BGN is now just a legally fixed currency
+  -- like any other, at 1/1.95583 EUR.
   `currency`        ENUM('BGN','EUR','ALL','RON',
-                         'CZK','DKK','GBP','HUF','MDL','MKD','PLN','RSD','RUB','SEK','TRY','UAH','USD')
-                    NOT NULL DEFAULT 'BGN' COMMENT 'code currency (ALL = Albanian lek, RON = Romanian leu, MDL = Moldovan leu, MKD = Macedonian denar, RSD = Serbian dinar)',
+                         'CZK','DKK','GBP','HUF','MDL','MKD','PLN','RSD','RUB','SEK','TRY','UAH','USD','CAD')
+                    NOT NULL DEFAULT 'EUR' COMMENT 'code currency (ALL = Albanian lek, RON = Romanian leu, MDL = Moldovan leu, MKD = Macedonian denar, RSD = Serbian dinar)',
   `min_subtotal`    DECIMAL(10,2) NOT NULL DEFAULT 0,
   `shipping_cap`    DECIMAL(10,2) NULL DEFAULT NULL COMMENT 'shipping/shipping_percent: max discount, NULL = uncapped',
   `max_uses`        INT           NOT NULL DEFAULT 0 COMMENT '0 = unlimited',
@@ -497,10 +510,11 @@ CREATE TABLE `promo_codes` (
   -- order) — adding a region means this ENUM first, then that const, then a
   -- PromoCode::SITE_CURRENCY entry (the-marketer's generator refuses a region
   -- with no currency). 'en' / 'biz' / 'org' are storefronts, not countries:
-  -- they carry no national currency and are mapped to EUR.
-  -- bg/ro/gr/al stay first — they are the original four and an ENUM stores an
-  -- ordinal, so the 33 new regions are APPENDED, never interleaved. Reordering
-  -- would force a full table copy and remap every existing row's region.
+  -- they carry no national currency and are mapped to EUR. 'co' is Canada (CAD)
+  -- — not the .co TLD and not Colombia.
+  -- bg/ro/gr/al stay first — they are the original four and the 33 new regions
+  -- are APPENDED, never interleaved. Same reason as `currency` above: a mid-list
+  -- insert is safe for the data but forces a full table copy.
   -- Live instances already on the four-region ENUM: see
   -- deploy/10-extend-site-and-currency-enums.sql.
   `site`            ENUM('bg','ro','gr','al',
@@ -553,11 +567,14 @@ CREATE TABLE `order_promo_codes` (
   `promo_code_id`      INT           NOT NULL COMMENT 'promo_codes.id',
   `klienti_id`         INT           NOT NULL DEFAULT '0' COMMENT '0 = guest',
   `discount_applied`   DECIMAL(10,2) NOT NULL,
-  -- Mirrors promo_codes.currency (fresh/06) — keep the two lists identical, in
-  -- the same order (ENUM stores an ordinal; new currencies are APPENDED only).
+  -- Mirrors promo_codes.currency (fresh/06) — keep the two lists identical and
+  -- in the same order, and APPEND new currencies rather than inserting them
+  -- mid-list: MySQL converts ENUM values by string so nothing is remapped
+  -- either way, but a mid-list insert forces ALGORITHM=COPY (full rebuild)
+  -- where an append is in-place and LOCK=NONE.
   `currency`           ENUM('BGN','EUR','ALL','RON',
-                            'CZK','DKK','GBP','HUF','MDL','MKD','PLN','RSD','RUB','SEK','TRY','UAH','USD')
-                       NOT NULL DEFAULT 'BGN' COMMENT 'snapshot of promo_codes.currency at order-finalize',
+                            'CZK','DKK','GBP','HUF','MDL','MKD','PLN','RSD','RUB','SEK','TRY','UAH','USD','CAD')
+                       NOT NULL DEFAULT 'EUR' COMMENT 'snapshot of promo_codes.currency at order-finalize',
   `used_by_employeeId` INT           DEFAULT NULL COMMENT 'admin/backoffice app — storefront leaves NULL',
   `created_at`         VARCHAR(14)   NOT NULL COMMENT 'YYYYMMDDHHmmss',
 
@@ -638,7 +655,7 @@ INSERT INTO `promo_codes`
 </details>
 
 <details>
-<summary><b>09-create-imartap-currency_rates.sql</b> — <code>currency_rates</code> + 17 реда (imartap)</summary>
+<summary><b>09-create-imartap-currency_rates.sql</b> — <code>currency_rates</code> + 18 реда, EUR база (imartap)</summary>
 
 ```sql
 -- =============================================================================
@@ -653,16 +670,27 @@ INSERT INTO `promo_codes`
 -- re-run fails with ERROR 1062 rather than overwriting a live job-updated rate.
 --
 -- Purpose (issue #610): promo money-fields are authored in the code's own
--- `currency` (promo_codes.currency). The cart is always priced in BGN, so
--- lib/PromoCode.php converts EUR/RON/… → BGN at the catalog read boundary using
--- these rates (PromoCode::toBgn / ratesToBgn). Base currency = BGN.
+-- `currency` (promo_codes.currency). The cart is priced in EUR, so
+-- lib/PromoCode.php converts BGN/RON/… → EUR at the catalog read boundary using
+-- these rates (PromoCode::toEur / ratesToEur). Base currency = EUR.
 --
---   rate_to_bgn : 1 unit of `currency` = rate_to_bgn BGN.
---   is_fixed=1  : legally fixed / irrevocable (BGN self, EUR adoption rate).
+--   rate_to_eur : 1 unit of `currency` = rate_to_eur EUR.
+--   is_fixed=1  : legally fixed / irrevocable (EUR self, BGN adoption rate).
 --                 The rate-updater (scripts/update-currency-rates.php) MUST skip
 --                 these — only is_fixed=0 (floating) rows are refreshed from BNB.
 --
--- NOTE: `promo_codes.currency` (file 06) ships the same 17 currencies seeded
+-- BASE CURRENCY IS EUR, NOT BGN. It used to be BGN (column `rate_to_bgn`) back
+-- when the cart was priced in leva. Bulgaria is euro-only now, the cart is EUR,
+-- and BGN became just another currency — a legally fixed one, at 1 BGN =
+-- 1/1.95583 EUR = 0.51129188. It keeps its row because legacy promo codes and
+-- every past order snapshot still reference BGN. An instance created before the
+-- switch is migrated by mysql-dumps/deploy/11-rebase-currency-rates-to-eur.sql,
+-- which renames the column and divides every rate by 1.95583.
+--
+-- The BNB feed is itself EUR-based, so the refresh job now stores REVERSERATE
+-- verbatim instead of multiplying it by 1.95583 — one less conversion hop.
+--
+-- NOTE: `promo_codes.currency` (file 06) ships the same 18 currencies seeded
 -- below, so every one of them is authorable on a code without a further
 -- migration. Adding a NEW currency means extending that ENUM first (in 06 AND in
 -- the two pivot copies, 01/02 — 07 on imartap), then a row here, then the
@@ -670,8 +698,8 @@ INSERT INTO `promo_codes`
 -- =============================================================================
 
 CREATE TABLE `currency_rates` (
-  `currency`    CHAR(3)        NOT NULL                COMMENT 'ISO 4217: BGN (base), EUR, RON, ...',
-  `rate_to_bgn` DECIMAL(18,8)  NOT NULL                COMMENT '1 unit of `currency` = rate_to_bgn BGN',
+  `currency`    CHAR(3)        NOT NULL                COMMENT 'ISO 4217: EUR (base), BGN, RON, ...',
+  `rate_to_eur` DECIMAL(18,8)  NOT NULL                COMMENT '1 unit of `currency` = rate_to_eur EUR',
   `is_fixed`    TINYINT(1)     NOT NULL DEFAULT 0      COMMENT '1 = legally fixed (irrevocable) — updater MUST skip',
   `source`      VARCHAR(16)    NOT NULL DEFAULT 'manual' COMMENT 'fixed | bnb | manual',
   `updated_at`  DATETIME       NULL     DEFAULT NULL   COMMENT 'last refresh, NULL until first job run',
@@ -683,14 +711,17 @@ CREATE TABLE `currency_rates` (
 -- run; source = 'manual' rows are NOT and must be set by hand before a code is
 -- authored in them, or a `fixed` discount converts at a stale rate.
 --
---   BGN — base currency (self). Fixed.
---   EUR — irrevocable BGN adoption rate 1 EUR = 1.95583 BGN. Fixed, never fetched.
+--   EUR — base currency (self), rate 1.0. Fixed, never fetched.
+--   BGN — irrevocable adoption rate, 1 BGN = 1/1.95583 EUR = 0.51129188. Fixed.
+--         No region authors in BGN any more (Bulgaria is euro-only —
+--         PromoCode::SITE_CURRENCY['bg'] is 'EUR'), but the row must stay: legacy
+--         BGN codes and every past order snapshot still reference the value.
 --   RON — floating (Romania). Placeholder ~ recent value; refreshed by the BNB job.
 --   ALL — Albanian lek. Floating, but BNB does NOT publish it → source 'manual';
 --         the BNB job leaves it untouched. Placeholder ~ 1 lek; update by hand or
 --         point the fetch at a provider that carries lek (e.g. Bank of Albania).
 --
--- The 13 rows after ALL back the non-euro regions added alongside them (see
+-- The 14 rows after ALL back the non-euro regions added alongside them (see
 -- PromoCode::SITE_CURRENCY). source = 'bnb' is claimed for the currencies the
 -- BNB daily fixing lists; the job is data-driven (it refreshes every
 -- is_fixed = 0 AND source = 'bnb' row) so no code change is needed for them, and
@@ -701,24 +732,25 @@ CREATE TABLE `currency_rates` (
 --         not publish these (same situation as ALL) → source 'manual'. MKD and
 --         RSD are de-facto euro-pegged, so their placeholders drift slowly; MDL
 --         floats and wants a real feed before any MDL code is authored.
-INSERT INTO `currency_rates` (`currency`, `rate_to_bgn`, `is_fixed`, `source`, `updated_at`) VALUES
-  ('BGN', 1.00000000, 1, 'fixed',  NULL),
-  ('EUR', 1.95583000, 1, 'fixed',  NULL),
-  ('RON', 0.39350000, 0, 'bnb',    NULL),
-  ('ALL', 0.01960000, 0, 'manual', NULL),
-  ('CZK', 0.07920000, 0, 'bnb',    NULL),
-  ('DKK', 0.26220000, 0, 'bnb',    NULL),
-  ('GBP', 2.29000000, 0, 'bnb',    NULL),
-  ('HUF', 0.00500000, 0, 'bnb',    NULL),
-  ('MDL', 0.09900000, 0, 'manual', NULL),
-  ('MKD', 0.03180000, 0, 'manual', NULL),
-  ('PLN', 0.46000000, 0, 'bnb',    NULL),
-  ('RSD', 0.01670000, 0, 'manual', NULL),
-  ('RUB', 0.02050000, 0, 'bnb',    NULL),
-  ('SEK', 0.17500000, 0, 'bnb',    NULL),
-  ('TRY', 0.04700000, 0, 'bnb',    NULL),
-  ('UAH', 0.04200000, 0, 'bnb',    NULL),
-  ('USD', 1.68000000, 0, 'bnb',    NULL);
+INSERT INTO `currency_rates` (`currency`, `rate_to_eur`, `is_fixed`, `source`, `updated_at`) VALUES
+  ('EUR', 1.00000000, 1, 'fixed',  NULL),
+  ('BGN', 0.51129188, 1, 'fixed',  NULL),
+  ('RON', 0.20119336, 0, 'bnb',    NULL),
+  ('ALL', 0.01002132, 0, 'manual', NULL),
+  ('CZK', 0.04049432, 0, 'bnb',    NULL),
+  ('DKK', 0.13406073, 0, 'bnb',    NULL),
+  ('GBP', 1.17085841, 0, 'bnb',    NULL),
+  ('HUF', 0.00255646, 0, 'bnb',    NULL),
+  ('MDL', 0.05061790, 0, 'manual', NULL),
+  ('MKD', 0.01625908, 0, 'manual', NULL),
+  ('PLN', 0.23519427, 0, 'bnb',    NULL),
+  ('RSD', 0.00853857, 0, 'manual', NULL),
+  ('RUB', 0.01048148, 0, 'bnb',    NULL),
+  ('SEK', 0.08947608, 0, 'bnb',    NULL),
+  ('TRY', 0.02403072, 0, 'bnb',    NULL),
+  ('UAH', 0.02147426, 0, 'bnb',    NULL),
+  ('USD', 0.85897036, 0, 'bnb',    NULL),
+  ('CAD', 0.64934069, 0, 'bnb',    NULL);
 ```
 
 </details>
@@ -812,14 +844,23 @@ GROUP BY TABLE_NAME
 ORDER BY TABLE_NAME;
 
 
--- ── E. currency ENUMs carry all 17 currencies ───────────────────────────────
+-- ── E. currency ENUMs carry all 18 currencies ───────────────────────────────
 -- promo_codes / cart_promo_codes / order_promo_codes must all declare the same
--- 17 currencies — the four originals BGN/EUR/ALL/RON first (an ENUM stores an
--- ordinal, so those positions are frozen) plus the 13 appended for the non-euro
--- regions. A short ENUM truncates a code in a missing currency on write, and a
--- pivot whose list is shorter than promo_codes' silently loses the snapshot.
--- An instance still on the old four: mysql-dumps/deploy/10-extend-site-and-
--- currency-enums.sql.
+-- 18 currencies — the four originals BGN/EUR/ALL/RON first, then the 14 appended
+-- for the non-euro regions. A short ENUM truncates a code in a missing currency
+-- on write, and a pivot whose list is shorter than promo_codes' silently loses
+-- the snapshot. An instance still on the old four: mysql-dumps/deploy/10-extend-
+-- site-and-currency-enums.sql.
+--
+-- BGN must stay declared even though NO region authors in it any more ('bg' is
+-- EUR — Bulgaria is euro-only). It is the currency the cart is priced in, the
+-- base every currency_rates row converts into, and the value every legacy code
+-- and past order snapshot still holds.
+--
+-- The order check below is about drift, not data: MySQL converts an ENUM column
+-- by the value's STRING, so a differently-ordered list still holds the right
+-- values — but it diverges from every other instance and costs a full table copy
+-- on the next ALTER instead of an in-place change.
 SELECT
   'E. currency ENUM' AS `check`,
   TABLE_NAME         AS `table`,
@@ -829,10 +870,10 @@ SELECT
   -- has no comma after 'RON' and would otherwise be reported as mis-ordered
   -- rather than as short, which sends you looking for the wrong problem.
   CASE
-    WHEN (LENGTH(COLUMN_TYPE) - LENGTH(REPLACE(COLUMN_TYPE, ',', ''))) + 1 <> 17
+    WHEN (LENGTH(COLUMN_TYPE) - LENGTH(REPLACE(COLUMN_TYPE, ',', ''))) + 1 <> 18
       THEN 'FAIL — missing a currency (deploy/10 not run?)'
     WHEN COLUMN_TYPE NOT LIKE 'enum(\'BGN\',\'EUR\',\'ALL\',\'RON\',%'
-      THEN 'FAIL — the four original currencies must stay first, in order'
+      THEN 'WARN — declaration order drifted from the other instances'
     ELSE 'OK'
   END AS `result`
 FROM information_schema.COLUMNS
@@ -847,8 +888,8 @@ ORDER BY TABLE_NAME;
 -- matches the region exactly now, deploy/08 deactivated the leftover rows), so
 -- 06 ships the 37 storefront regions and nothing else. 'al' = Albania is a real
 -- region — one letter away — and must stay. bg/ro/gr/al are the original four
--- and stay in the first four ENUM positions: the column stores an ordinal, so
--- reordering would remap every existing row to a different region.
+-- and stay in the first four ENUM positions — see check E on why that is a drift
+-- check and not a data-integrity one. Note 'co' is Canada, not the .co TLD.
 --
 -- The list must equal PromoCode::SITES — a region the ENUM has but the PHP does
 -- not is unredeemable, and one the PHP has but the ENUM does not cannot even be
@@ -874,7 +915,7 @@ SELECT
     WHEN (LENGTH(COLUMN_TYPE) - LENGTH(REPLACE(COLUMN_TYPE, ',', ''))) + 1 <> 37
       THEN 'FAIL — region list is out of sync with PromoCode::SITES (deploy/10 not run?)'
     WHEN COLUMN_TYPE NOT LIKE 'enum(\'bg\',\'ro\',\'gr\',\'al\',%'
-      THEN 'FAIL — the four original regions must stay first, in order'
+      THEN 'WARN — declaration order drifted from the other instances'
     ELSE 'OK'
   END AS `result`
 FROM information_schema.COLUMNS
@@ -910,12 +951,49 @@ ORDER BY k.CONSTRAINT_NAME;
 -- =============================================================================
 
 
--- ── H. currency_rates seed — expect 4 rows ───────────────────── IMARTAP ONLY ─
--- BGN/EUR is_fixed=1 (updater must skip); RON/ALL is_fixed=0 (floating).
+-- ── H. currency_rates seed — expect 18 rows ──────────────────── IMARTAP ONLY ─
+-- Base is EUR: `rate_to_eur` = how many EUR one unit of the currency buys.
+-- EUR/BGN is_fixed=1 (updater must skip — EUR is the base at 1.0, BGN the
+-- irrevocable 0.51129188); everything else is_fixed=0 (floating).
+-- An instance still showing `rate_to_bgn` errors here with ERROR 1054 and wants
+-- mysql-dumps/deploy/11-rebase-currency-rates-to-eur.sql.
 SELECT 'H. currency_rates' AS `check`,
-       `currency`, `rate_to_bgn`, `is_fixed`, `source`, `updated_at`
+       `currency`, `rate_to_eur`, `is_fixed`, `source`, `updated_at`
 FROM `currency_rates`
 ORDER BY `is_fixed` DESC, `currency`;
+
+
+-- ── H2. every authorable currency has a rate row ─────────────── IMARTAP ONLY ─
+-- PromoCode::toEur() falls back to rate 1.0 for a currency with no row, i.e. it
+-- treats the amount as already-EUR: a `fixed` HUF code would deduct its face
+-- value in euro. Expect 0 rows.
+SELECT
+  'H2. currency without a rate' AS `check`,
+  p.`currency`,
+  COUNT(*)                      AS `codes`,
+  'FAIL — add a currency_rates row before authoring in this currency' AS `result`
+FROM `promo_codes` p
+WHERE NOT EXISTS (SELECT 1 FROM `currency_rates` r WHERE r.`currency` = p.`currency`)
+GROUP BY p.`currency`;
+
+
+-- ── H3. the base is EUR and is exactly 1.0 ───────────────────── IMARTAP ONLY ─
+-- If EUR is anything but 1.00000000 every converted amount is scaled by that
+-- factor. BGN must be the irrevocable 1/1.95583 and flagged fixed, or the nightly
+-- BNB job will try to fetch a currency its feed no longer lists.
+SELECT
+  'H3. fixed anchors' AS `check`,
+  `currency`,
+  `rate_to_eur`,
+  `is_fixed`,
+  CASE
+    WHEN `currency` = 'EUR' AND `rate_to_eur` = 1.00000000 AND `is_fixed` = 1 THEN 'OK'
+    WHEN `currency` = 'BGN' AND `rate_to_eur` = 0.51129188 AND `is_fixed` = 1 THEN 'OK'
+    ELSE 'FAIL — anchor rate or is_fixed flag is wrong (deploy/11 not run?)'
+  END AS `result`
+FROM `currency_rates`
+WHERE `currency` IN ('EUR','BGN')
+ORDER BY `currency`;
 
 
 -- ── I. promo_codes seed — expect 7 rows, one per behaviour ───── IMARTAP ONLY ─
