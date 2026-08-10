@@ -54,3 +54,28 @@ INSERT INTO `currency_rates` (`currency`, `rate_to_eur`, `is_fixed`, `source`, `
   ('UAH', 0.02147426, 0, 'bnb',    NULL),
   ('USD', 0.85897036, 0, 'bnb',    NULL),
   ('CAD', 0.64934069, 0, 'bnb',    NULL);
+
+
+-- ── OPTIONAL — ALL (Albanian lek) ────────────────────────────────────────────
+-- Deliberately NOT one of the 14 above, and normally NOT needed.
+--
+-- 'ALL' is part of the OLD baseline this set migrates from: the four-value ENUM
+-- is ('BGN','EUR','ALL','RON') and lek was added to currency_rates back in
+-- deploy/07. So the target already HAS the row, and file 01 re-bases it like
+-- every other rate — 0.01960000 BGN ÷ 1.95583 = 0.01002132 EUR. Putting it in
+-- the atomic INSERT above would raise ERROR 1062 there and take all 14 rows
+-- down with it, since a multi-row INSERT is all-or-nothing.
+--
+-- Uncomment the statement below ONLY on an instance that genuinely lacks the
+-- row (one predating deploy/07). Check first — expect exactly one row:
+--     SELECT * FROM `currency_rates` WHERE `currency` = 'ALL';
+--
+-- source = 'manual', NOT 'bnb': the BNB daily fixing does not carry Albanian lek
+-- (verified against the live feed — 29 currencies, no ALL), so
+-- scripts/update-currency-rates.php skips this row forever by design. The value
+-- below is a PLACEHOLDER (≈ 99.8 lek per EUR). Set a real rate by hand, from
+-- Bank of Albania, before a `fixed` ALL code is authored — otherwise the code is
+-- deducted at whatever happens to be in the table.
+--
+-- INSERT INTO `currency_rates` (`currency`, `rate_to_eur`, `is_fixed`, `source`, `updated_at`) VALUES
+--   ('ALL', 0.01002132, 0, 'manual', NULL);
