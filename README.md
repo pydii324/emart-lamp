@@ -28,6 +28,7 @@ As of now, we have several different PHP versions. Use appropriate php version a
 
 - Clone this repository on your local computer
 - configure .env as needed
+- create `public_html/.htaccess` from the template
 - Run the `docker compose up -d`.
 
 ```shell
@@ -35,11 +36,30 @@ git clone https://github.com/sprintcube/docker-compose-lamp.git
 cd docker-compose-lamp/
 cp sample.env .env
 // modify sample.env as needed
+cp public_html/.htaccess.example public_html/.htaccess
 docker compose up -d
 // visit localhost
 ```
 
 Your LAMP stack is now ready!! You can access it via `http://localhost`.
+
+### Apache rewrite rules (`.htaccess`)
+
+`public_html/.htaccess` is **gitignored** — production keeps host-specific rules in it (canonical-domain 301, Basic auth, `.htpasswd` path) that must not live in the repo. A fresh clone therefore has no `.htaccess` at all, and you have to create one:
+
+```shell
+cp public_html/.htaccess.example public_html/.htaccess
+```
+
+Skip this and the site looks half-broken in a confusing way: `/` and static assets load fine, but every pretty URL (`/moiata-koshnica`, `/za-potvarzhdenie`, …) returns Apache's own 404 page. Those URLs have no file behind them — the rewrite rules are what routes them onto the `index.php` front controller.
+
+Diagnosing it: if the 404 response has no `X-Powered-By: PHP` header, Apache never reached PHP, which means the rewrite is missing rather than the page being genuinely absent.
+
+```shell
+curl -skI https://localhost:8453/moiata-koshnica | head -3
+```
+
+Do **not** copy a production `.htaccess` into your local checkout. The canonical-domain 301 redirects you off `localhost`, and an `AuthUserFile` pointing at a nonexistent `.htpasswd` makes Apache return 500 on every request. `.htaccess.example` documents both at the bottom, commented out.
 
 ## Configuration and Usage
 
