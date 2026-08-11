@@ -44,7 +44,7 @@ imartap не са изравнени, този set покрива и двете.
 | 01 | `01-create-cart_promo_codes.sql` | ✅ | — | `cart_promo_codes` (cart pivot, без cross-DB FK; currency/subtype/discount_value/shipping_percent вътре) |
 | 02 | `02-create-order_promo_codes.sql` | ✅ | — | `order_promo_codes` (регионална половина, **без** FK) |
 | 03 | `03-add-item-promo-columns.sql` | ✅ | ✅ | `item`/`item_l`/`item_no`: `discount_applied`, `it_cena_new`, `it_suma_new`, `item_br_new`, `promot_new` |
-| 04 | `04-add-porachki-promo-columns.sql` | ✅ | ✅ | `pordost_coupon_discount` (porachki/`_l`/`_no`) + `promo_fixed_discount` (`_l`/`_no`) |
+| 04 | `04-add-porachki-promo-columns.sql` | ✅ | ✅ | `pordost_coupon_discount` + `cendost_baza` (porachki/`_l`/`_no`) + `promo_fixed_discount` (`_l`/`_no`) |
 | 05 | `05-seed-catalog-promo-skus.sql` | ✅ | — | Промо SKU редове в `catalog` (5555555/6666666/7777777/8888888; cena=0, vidimost=0, p_acti=0) |
 | 06 | `06-create-imartap-promo_codes.sql` | — | ✅ | `promo_codes` (каталог / дефиниция — id master, споделен между всички региони) |
 | 07 | `07-create-imartap-order_promo_codes.sql` | — | ✅ | `order_promo_codes` (imartap копие) **с** FK → `porachki.porachki_id` + `promo_codes.id` |
@@ -165,9 +165,9 @@ DROP TABLE IF EXISTS cart_promo_codes, order_promo_codes;
 ALTER TABLE item     DROP COLUMN discount_applied, DROP COLUMN it_cena_new, DROP COLUMN it_suma_new, DROP COLUMN item_br_new, DROP COLUMN promot_new;
 ALTER TABLE item_l   DROP COLUMN discount_applied, DROP COLUMN it_cena_new, DROP COLUMN it_suma_new, DROP COLUMN item_br_new, DROP COLUMN promot_new;
 ALTER TABLE item_no  DROP COLUMN discount_applied, DROP COLUMN it_cena_new, DROP COLUMN it_suma_new, DROP COLUMN item_br_new, DROP COLUMN promot_new;
-ALTER TABLE porachki    DROP COLUMN pordost_coupon_discount;
-ALTER TABLE porachki_l  DROP COLUMN pordost_coupon_discount, DROP COLUMN promo_fixed_discount;
-ALTER TABLE porachki_no DROP COLUMN pordost_coupon_discount, DROP COLUMN promo_fixed_discount;
+ALTER TABLE porachki    DROP COLUMN pordost_coupon_discount, DROP COLUMN cendost_baza;
+ALTER TABLE porachki_l  DROP COLUMN pordost_coupon_discount, DROP COLUMN cendost_baza, DROP COLUMN promo_fixed_discount;
+ALTER TABLE porachki_no DROP COLUMN pordost_coupon_discount, DROP COLUMN cendost_baza, DROP COLUMN promo_fixed_discount;
 DELETE FROM catalog WHERE cat_no IN ('5555555','6666666','7777777','8888888');
 ```
 

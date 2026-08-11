@@ -145,9 +145,12 @@ SELECT
   END AS `result`
 FROM (
             SELECT 'porachki'    AS `name`, 'pordost_coupon_discount' AS `col`
+  UNION ALL SELECT 'porachki',              'cendost_baza'
   UNION ALL SELECT 'porachki_l',            'pordost_coupon_discount'
+  UNION ALL SELECT 'porachki_l',            'cendost_baza'
   UNION ALL SELECT 'porachki_l',            'promo_fixed_discount'
   UNION ALL SELECT 'porachki_no',           'pordost_coupon_discount'
+  UNION ALL SELECT 'porachki_no',           'cendost_baza'
   UNION ALL SELECT 'porachki_no',           'promo_fixed_discount'
 ) t
 LEFT JOIN information_schema.TABLES tt

@@ -68,17 +68,18 @@ ORDER BY TABLE_NAME, COLUMN_NAME;
 
 
 -- ── D. porachki* promo columns ──────────────────────────────────────────────
--- porachki → 1 (pordost_coupon_discount); porachki_l / porachki_no → 2.
+-- porachki → 2 (pordost_coupon_discount, cendost_baza);
+-- porachki_l / porachki_no → 3 (+ promo_fixed_discount).
 SELECT
   'D. porachki promo columns' AS `check`,
   TABLE_NAME                  AS `table`,
   COUNT(*)                    AS `found`,
-  IF(COUNT(*) = IF(TABLE_NAME = 'porachki', 1, 2), 'OK', 'FAIL') AS `result`,
+  IF(COUNT(*) = IF(TABLE_NAME = 'porachki', 2, 3), 'OK', 'FAIL') AS `result`,
   GROUP_CONCAT(COLUMN_NAME ORDER BY COLUMN_NAME SEPARATOR ', ') AS `columns`
 FROM information_schema.COLUMNS
 WHERE TABLE_SCHEMA = DATABASE()
   AND TABLE_NAME IN ('porachki','porachki_l','porachki_no')
-  AND COLUMN_NAME IN ('pordost_coupon_discount','promo_fixed_discount')
+  AND COLUMN_NAME IN ('pordost_coupon_discount','cendost_baza','promo_fixed_discount')
 GROUP BY TABLE_NAME
 ORDER BY TABLE_NAME;
 
