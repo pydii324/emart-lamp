@@ -26,7 +26,7 @@ imartap:               00 → 03 → 04 → 06 → 09 → 07 → 08 → 10
 | 05  | `05-seed-catalog-promo-skus.sql` | ✅   | —   | 4 промо SKU в `catalog` |
 | 06  | `06-create-imartap-promo_codes.sql` | —   | ✅   | `promo_codes` (каталогът) |
 | 07  | `07-create-imartap-order_promo_codes.sql` | —   | ✅   | `order_promo_codes` **с** FK |
-| 08  | `08-seed-imartap-promo_codes.sql` | —   | ✅   | 7 example кода (опционален) |
+| 08  | `08-seed-imartap-promo_codes.sql` | —   | ✅   | 6 example кода (опционален) |
 | 09  | `09-create-imartap-currency_rates.sql` | —   | ✅   | `currency_rates` + 4 реда |
 | 10  | `10-verify.sql` | ✅   | ✅   | **Read-only.** Какво реално е кацнало |
 
@@ -259,9 +259,11 @@ CREATE TABLE `cart_promo_codes` (
   `currency`         ENUM('BGN','EUR','ALL','RON',
                           'CZK','DKK','GBP','HUF','MDL','MKD','PLN','RSD','RUB','SEK','TRY','UAH','USD','CAD')
                      NOT NULL DEFAULT 'EUR' COMMENT 'snapshot of promo_codes.currency at apply-time',
-  `type`             ENUM('percent','fixed','shipping','shipping_percent') NOT NULL,
+  -- 'shipping_percent' intentionally NOT in this ENUM — see the note on the
+  -- `type` column in 06-create-imartap-promo_codes.sql.
+  `type`             ENUM('percent','fixed','shipping') NOT NULL,
   `subtype`          ENUM('voucher','coupon') DEFAULT NULL,
-  `shipping_cap`     DECIMAL(10,2) DEFAULT NULL COMMENT 'shipping/shipping_percent only (flat cap on the discount)',
+  `shipping_cap`     DECIMAL(10,2) DEFAULT NULL COMMENT 'shipping only for now (flat cap on the discount) — see the shipping_percent note above',
   `created_at`       VARCHAR(14)   NOT NULL COMMENT 'YYYYMMDDHHmmss',
 
   PRIMARY KEY (`id`),
@@ -468,7 +470,14 @@ INSERT INTO `catalog` (`cat_no`, `ime`, `miarka`, `cena`, `vidimost`, `p_acti`, 
 CREATE TABLE `promo_codes` (
   `id`              INT           NOT NULL AUTO_INCREMENT,
   `code`            VARCHAR(50)   NOT NULL,
-  `type`            ENUM('percent','fixed','shipping','shipping_percent') NOT NULL DEFAULT 'percent',
+  -- 'shipping_percent' intentionally NOT in this ENUM (removed 2026-08-21) — the
+  -- application code (lib/PromoCalc.php, lib/PromoCode.php, promo-input.php,
+  -- promo-cart-rows.php, the-marketer/promo-codes.php) still fully implements
+  -- this type for when it is reintroduced; only the DB-level option is dropped
+  -- here. Re-adding it later is a normal ENUM ADD in both this table and
+  -- cart_promo_codes (01) — MySQL converts ENUM values by string, so appending
+  -- it back at the end is a safe, in-place ALTER.
+  `type`            ENUM('percent','fixed','shipping') NOT NULL DEFAULT 'percent',
   `subtype`         ENUM('voucher','coupon') NULL DEFAULT NULL COMMENT 'fixed only: NULL/voucher → SKU 5555555, coupon → SKU 7777777',
   `discount_value`  DECIMAL(10,2) NOT NULL,
   -- One currency per region — see PromoCode::SITE_CURRENCY, which is the single
@@ -488,7 +497,7 @@ CREATE TABLE `promo_codes` (
                          'CZK','DKK','GBP','HUF','MDL','MKD','PLN','RSD','RUB','SEK','TRY','UAH','USD','CAD')
                     NOT NULL DEFAULT 'EUR' COMMENT 'code currency (ALL = Albanian lek, RON = Romanian leu, MDL = Moldovan leu, MKD = Macedonian denar, RSD = Serbian dinar)',
   `min_subtotal`    DECIMAL(10,2) NOT NULL DEFAULT 0,
-  `shipping_cap`    DECIMAL(10,2) NULL DEFAULT NULL COMMENT 'shipping/shipping_percent: max discount, NULL = uncapped',
+  `shipping_cap`    DECIMAL(10,2) NULL DEFAULT NULL COMMENT 'shipping only for now: max discount, NULL = uncapped (see the shipping_percent note above)',
   `max_uses`        INT           NOT NULL DEFAULT 0 COMMENT '0 = unlimited',
   `times_used`      INT           NOT NULL DEFAULT 0,
   `active`          BOOLEAN       NOT NULL DEFAULT TRUE,
@@ -595,7 +604,7 @@ CREATE TABLE `order_promo_codes` (
 </details>
 
 <details>
-<summary><b>08-seed-imartap-promo_codes.sql</b> — 7 example кода, по един на тип (опционален)</summary>
+<summary><b>08-seed-imartap-promo_codes.sql</b> — 6 example кода, по един на тип (опционален)</summary>
 
 ```sql
 -- =============================================================================
@@ -620,14 +629,17 @@ CREATE TABLE `order_promo_codes` (
 --   fixed / coupon    flat amount, burned on use         SKU 7777777   (discount_value = amount)
 --   shipping (full)   whole shipping free, cap NULL      SKU 6666666   (discount_value unused → 0)
 --   shipping (capped) up to shipping_cap off shipping    SKU 6666666   (discount_value unused → 0)
---   shipping_percent  % of full shipping, optional cap   —             (discount_value = %)
+--
+-- 'shipping_percent' is NOT seeded here — the type was removed from the `type`
+-- ENUM in 06 (see the note there). No row of this behaviour exists until it is
+-- reintroduced.
 --
 -- Catalog money-fields are authored in the code's own `currency`; lib/PromoCode.php
 -- converts them to the BGN cart at read time via currency_rates (EUR ×1.95583 fixed;
 -- BGN passthrough; ALL/lek ×manual rate). Set `currency` per code to 'BGN', 'EUR'
--- or 'ALL'. Codes 1-6 below are EUR examples (site = 'bg', Albania); code 7 is an
+-- or 'ALL'. Codes 1-5 below are EUR examples (site = 'bg', Albania); code 6 is an
 -- 'ALL' (Albanian lek) example for lek testing. discount_value is monetary only for
--- `fixed`; percent / shipping_percent hold a %, which is never converted.
+-- `fixed`; `percent` holds a %, which is never converted.
 -- =============================================================================
 
 SET NAMES utf8mb4;
@@ -637,8 +649,7 @@ SET NAMES utf8mb4;
 --   3) COUPON5       fixed / coupon    — 5.00 flat off subtotal (SKU 7777777)
 --   4) FREESHIP      shipping          — whole shipping free, uncapped (SKU 6666666)
 --   5) SHIPCAP3      shipping          — up to 3.00 off shipping (SKU 6666666)
---   6) SHIPPCT50     shipping_percent  — 50% of full shipping, uncapped
---   7) VOUCHER500ALL fixed / voucher   — 500 lek off subtotal (SKU 5555555); priced in
+--   6) VOUCHER500ALL fixed / voucher   — 500 lek off subtotal (SKU 5555555); priced in
 --                                        lek → converts to BGN via currency_rates['ALL']
 --                                        (500 * 0.0196 ≈ 9.80 BGN)
 INSERT INTO `promo_codes`
@@ -648,7 +659,6 @@ INSERT INTO `promo_codes`
   ('COUPON5',       'fixed',            'coupon',   5.00, 'EUR', 0.00, NULL, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: 5.00 fixed coupon (SKU 7777777)',       'bg', 'fresh-seed'),
   ('FREESHIP',      'shipping',         NULL,       0.00, 'EUR', 0.00, NULL, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: free shipping, uncapped (SKU 6666666)', 'bg', 'fresh-seed'),
   ('SHIPCAP3',      'shipping',         NULL,       0.00, 'EUR', 0.00, 3.00, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: up to 3.00 off shipping (SKU 6666666)', 'bg', 'fresh-seed'),
-  ('SHIPPCT50',     'shipping_percent', NULL,      50.00, 'EUR', 0.00, NULL, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: 50% off shipping, uncapped',            'bg', 'fresh-seed'),
   ('VOUCHER500ALL', 'fixed',            'voucher', 500.00, 'ALL', 0.00, NULL, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: 500 lek fixed voucher (SKU 5555555)',  'bg', 'fresh-seed');
 ```
 
@@ -777,7 +787,7 @@ INSERT INTO `currency_rates` (`currency`, `rate_to_eur`, `is_fixed`, `source`, `
 --   imartap  : promo_codes + order_promo_codes + currency_rates tables
 --              order_promo_codes → 2 FKs (porachki, promo_codes)
 --              item → 5 promo columns; porachki → pordost_coupon_discount
---              currency_rates → 4 rows; promo_codes → 7 fresh-seed rows
+--              currency_rates → 4 rows; promo_codes → 6 fresh-seed rows
 -- =============================================================================
 
 SELECT DATABASE() AS `db`, NOW() AS `verified_at`;
@@ -996,7 +1006,8 @@ WHERE `currency` IN ('EUR','BGN')
 ORDER BY `currency`;
 
 
--- ── I. promo_codes seed — expect 7 rows, one per behaviour ───── IMARTAP ONLY ─
+-- ── I. promo_codes seed — expect 6 rows, one per behaviour ───── IMARTAP ONLY ─
+-- ('shipping_percent' is not seeded — see the note in 06/08.)
 SELECT 'I. promo_codes seed' AS `check`,
        `id`, `code`, `type`, `subtype`, `discount_value`, `currency`,
        `shipping_cap`, `active`, `site`
@@ -1043,5 +1054,5 @@ DELETE FROM `catalog` WHERE `cat_no` IN ('5555555','6666666','7777777','8888888'
 ### Очаквано от `10-verify.sql`
 
 - регионална: `cart_promo_codes` + `order_promo_codes`; 5 промо колони на всяка `item*`; `porachki` 1 колона, `porachki_l`/`_no` по 2; 4 catalog SKU с `vidimost=0, p_acti=0`
-- imartap: `promo_codes` + `order_promo_codes` (2 FK) + `currency_rates` (4 реда); 7 кода `created_by='fresh-seed'`
+- imartap: `promo_codes` + `order_promo_codes` (2 FK) + `currency_rates` (4 реда); 6 кода `created_by='fresh-seed'` (`shipping_percent` премахнат от `type` ENUM-а, не се seed-ва)
 - `it_cena`/`it_suma` навсякъде да са **stored** (`EXTRA` празно) — не generated

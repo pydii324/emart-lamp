@@ -16,7 +16,7 @@
 --   imartap  : promo_codes + order_promo_codes + currency_rates tables
 --              order_promo_codes → 2 FKs (porachki, promo_codes)
 --              item → 5 promo columns; porachki → pordost_coupon_discount
---              currency_rates → 4 rows; promo_codes → 7 fresh-seed rows
+--              currency_rates → 4 rows; promo_codes → 6 fresh-seed rows
 -- =============================================================================
 
 SELECT DATABASE() AS `db`, NOW() AS `verified_at`;
@@ -236,7 +236,8 @@ WHERE `currency` IN ('EUR','BGN')
 ORDER BY `currency`;
 
 
--- ── I. promo_codes seed — expect 7 rows, one per behaviour ───── IMARTAP ONLY ─
+-- ── I. promo_codes seed — expect 6 rows, one per behaviour ───── IMARTAP ONLY ─
+-- ('shipping_percent' is not seeded — see the note in 06/08.)
 SELECT 'I. promo_codes seed' AS `check`,
        `id`, `code`, `type`, `subtype`, `discount_value`, `currency`,
        `shipping_cap`, `active`, `site`

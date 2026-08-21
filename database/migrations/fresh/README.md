@@ -41,14 +41,14 @@ imartap не са изравнени, този set покрива и двете.
 | # | Файл | Регионална (AL) | imartap | Обект |
 |---|---|:---:|:---:|---|
 | 00 | `00-preflight.sql` | ✅ | ✅ | **Read-only.** Доказва, че средата е от нула — липсват промо таблиците, `item*` имат оригиналните stored `it_cena`/`it_suma`, няма `it_cena_baza`/`it_cena_suma`, няма промо колони, няма seed-нати SKU-та |
-| 01 | `01-create-cart_promo_codes.sql` | ✅ | — | `cart_promo_codes` (cart pivot, без cross-DB FK; currency/subtype/discount_value/shipping_percent вътре) |
+| 01 | `01-create-cart_promo_codes.sql` | ✅ | — | `cart_promo_codes` (cart pivot, без cross-DB FK; currency/subtype/discount_value/shipping_cap вътре) |
 | 02 | `02-create-order_promo_codes.sql` | ✅ | — | `order_promo_codes` (регионална половина, **без** FK) |
 | 03 | `03-add-item-promo-columns.sql` | ✅ | ✅ | `item`/`item_l`/`item_no`: `discount_applied`, `it_cena_new`, `it_suma_new`, `item_br_new`, `promot_new` |
 | 04 | `04-add-porachki-promo-columns.sql` | ✅ | ✅ | `pordost_coupon_discount` + `cendost_baza` (porachki/`_l`/`_no`) + `promo_fixed_discount` (`_l`/`_no`) |
 | 05 | `05-seed-catalog-promo-skus.sql` | ✅ | — | Промо SKU редове в `catalog` (5555555/6666666/7777777/8888888; cena=0, vidimost=0, p_acti=0) |
 | 06 | `06-create-imartap-promo_codes.sql` | — | ✅ | `promo_codes` (каталог / дефиниция — id master, споделен между всички региони) |
 | 07 | `07-create-imartap-order_promo_codes.sql` | — | ✅ | `order_promo_codes` (imartap копие) **с** FK → `porachki.porachki_id` + `promo_codes.id` |
-| 08 | `08-seed-imartap-promo_codes.sql` | — | ✅ | `promo_codes` seed: по 1 example ред на тип (percent / fixed voucher / fixed coupon / shipping full / shipping capped / shipping_percent / lek voucher) |
+| 08 | `08-seed-imartap-promo_codes.sql` | — | ✅ | `promo_codes` seed: по 1 example ред на тип (percent / fixed voucher / fixed coupon / shipping full / shipping capped / lek voucher) |
 | 09 | `09-create-imartap-currency_rates.sql` | — | ✅ | `currency_rates` + 18 реда (EUR база 1.0 + BGN fixed; RON и 13 други от BNB; ALL/MDL/MKD/RSD ръчни) |
 | 10 | `10-verify.sql` | ✅ | ✅ | **Read-only.** Доказва какво реално е кацнало |
 
@@ -183,6 +183,12 @@ DROP TABLE IF EXISTS currency_rates;
 
 ## Бележки
 
+- **`shipping_percent` не е в `type` ENUM-а (01, 06).** Премахнат нарочно от схемата
+  на 2026-08-21 — приложният код (`lib/PromoCalc.php`, `lib/PromoCode.php`,
+  `promo-input.php`, `promo-cart-rows.php`, `the-marketer/promo-codes.php`) все още
+  го поддържа изцяло, за бъдещо връщане. Затова 08 вече seed-ва 6 примерни реда
+  вместо 7. Връщането му е обикновен `ALTER TABLE ... MODIFY type ENUM(...)`,
+  добавящ стойността в края на списъка — в двете таблици (01 и 06).
 - **Charset.** Живата BG `catalog.ime` е корумпирана at-rest (mojibake, double-encoded с
   latin1 клиент). Файл 05 нарочно НЕ възпроизвежда бъга (`SET NAMES utf8mb4`).
 - `miarka` в seed-а е `бр.` (както в BG). Смени ако Албания ползва друг етикет.

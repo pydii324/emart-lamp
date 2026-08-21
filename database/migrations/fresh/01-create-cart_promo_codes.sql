@@ -26,9 +26,11 @@ CREATE TABLE `cart_promo_codes` (
   `currency`         ENUM('BGN','EUR','ALL','RON',
                           'CZK','DKK','GBP','HUF','MDL','MKD','PLN','RSD','RUB','SEK','TRY','UAH','USD','CAD')
                      NOT NULL DEFAULT 'EUR' COMMENT 'snapshot of promo_codes.currency at apply-time',
-  `type`             ENUM('percent','fixed','shipping','shipping_percent') NOT NULL,
+  -- 'shipping_percent' intentionally NOT in this ENUM — see the note on the
+  -- `type` column in 06-create-imartap-promo_codes.sql.
+  `type`             ENUM('percent','fixed','shipping') NOT NULL,
   `subtype`          ENUM('voucher','coupon') DEFAULT NULL,
-  `shipping_cap`     DECIMAL(10,2) DEFAULT NULL COMMENT 'shipping/shipping_percent only (flat cap on the discount)',
+  `shipping_cap`     DECIMAL(10,2) DEFAULT NULL COMMENT 'shipping only for now (flat cap on the discount) — see the shipping_percent note above',
   `created_at`       VARCHAR(14)   NOT NULL COMMENT 'YYYYMMDDHHmmss',
 
   PRIMARY KEY (`id`),
