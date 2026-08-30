@@ -16,19 +16,20 @@
 -- END STATE (== current dev schema):
 --     it_cena       FLOAT  stored   (base, renamed from it_cena_baza)
 --     it_suma       FLOAT  stored   (base, renamed from it_suma_baza)
---     it_cena_new   FLOAT  stored   \
---     it_suma_new   FLOAT  stored    |  post-promo, WRITTEN BY SVETLYO'S ERP
---     item_br_new   INT    stored    |  (not derived by us)
---     promot_new    VARCHAR(20) st. /
+--     it_cena_new   FLOAT  stored    )  post-promo, WRITTEN BY THE STOREFRONT
+--     it_suma_new   FLOAT  stored    )  (CartItems::applyItemDiscounts(), podavam_za.php)
+--     item_br_new   INT    stored    \  post-promo, WRITTEN BY SVETLYO'S ERP
+--     promot_new    VARCHAR(20) st.  /  (not derived by us)
 --     it_cena_suma  FLOAT  VIRTUAL  (= ROUND(it_cena * item_br, 2))
 --
 -- WHERE TO RUN:
 --   • Section A (`item`)          → imartap AND every regional DB
 --   • Section B (`item_l`,`item_no`) → regional DBs ONLY (imartap has no item_l/item_no)
 --
--- NOTE on the `_new` columns: if Svetlyo's ERP has ALREADY added them on the
--- target DB, the matching ADD COLUMN below will fail with "Duplicate column".
--- That is expected — just skip the statements for columns that already exist.
+-- NOTE on the `_new` columns: if Svetlyo's ERP has ALREADY added `item_br_new`/
+-- `promot_new` on the target DB, the matching ADD COLUMN below will fail with
+-- "Duplicate column". That is expected — just skip the statements for columns
+-- that already exist. `it_cena_new`/`it_suma_new` are storefront-owned now.
 --
 -- Ship this together with the PHP change (cart writers/readers now use
 -- it_cena/it_suma). Running it without the PHP update breaks the cart.
@@ -48,9 +49,10 @@ ALTER TABLE `item` DROP COLUMN `it_suma`;
 ALTER TABLE `item` CHANGE COLUMN `it_cena_baza` `it_cena` FLOAT NULL DEFAULT NULL AFTER `item_br`;
 ALTER TABLE `item` CHANGE COLUMN `it_suma_baza` `it_suma` FLOAT NULL DEFAULT NULL AFTER `it_cena`;
 
--- Svetlyo's ERP-owned post-promo columns (SKIP any that already exist)
-ALTER TABLE `item` ADD COLUMN `it_cena_new` FLOAT       NULL DEFAULT NULL COMMENT 'Final unit price after promo — written by ERP';
-ALTER TABLE `item` ADD COLUMN `it_suma_new` FLOAT       NULL DEFAULT NULL COMMENT 'Final line total after promo — written by ERP';
+-- Post-promo columns: it_cena_new/it_suma_new are storefront-owned; item_br_new/
+-- promot_new stay Svetlyo's ERP-owned (SKIP any that already exist)
+ALTER TABLE `item` ADD COLUMN `it_cena_new` FLOAT       NULL DEFAULT NULL COMMENT 'Final unit price after promo — written by storefront (it_suma_new / item_br)';
+ALTER TABLE `item` ADD COLUMN `it_suma_new` FLOAT       NULL DEFAULT NULL COMMENT 'Final line total after promo — written by storefront (it_suma − discount_applied)';
 ALTER TABLE `item` ADD COLUMN `item_br_new` INT         NULL DEFAULT NULL COMMENT 'Final quantity after promo — written by ERP';
 ALTER TABLE `item` ADD COLUMN `promot_new`  VARCHAR(20) NULL DEFAULT NULL COMMENT 'Promo marker after promo — written by ERP';
 
@@ -70,8 +72,8 @@ ALTER TABLE `item_l` DROP COLUMN `it_cena`;
 ALTER TABLE `item_l` DROP COLUMN `it_suma`;
 ALTER TABLE `item_l` CHANGE COLUMN `it_cena_baza` `it_cena` FLOAT NULL DEFAULT NULL AFTER `item_br`;
 ALTER TABLE `item_l` CHANGE COLUMN `it_suma_baza` `it_suma` FLOAT NULL DEFAULT NULL AFTER `it_cena`;
-ALTER TABLE `item_l` ADD COLUMN `it_cena_new` FLOAT       NULL DEFAULT NULL COMMENT 'Final unit price after promo — written by ERP';
-ALTER TABLE `item_l` ADD COLUMN `it_suma_new` FLOAT       NULL DEFAULT NULL COMMENT 'Final line total after promo — written by ERP';
+ALTER TABLE `item_l` ADD COLUMN `it_cena_new` FLOAT       NULL DEFAULT NULL COMMENT 'Final unit price after promo — written by storefront (it_suma_new / item_br)';
+ALTER TABLE `item_l` ADD COLUMN `it_suma_new` FLOAT       NULL DEFAULT NULL COMMENT 'Final line total after promo — written by storefront (it_suma − discount_applied)';
 ALTER TABLE `item_l` ADD COLUMN `item_br_new` INT         NULL DEFAULT NULL COMMENT 'Final quantity after promo — written by ERP';
 ALTER TABLE `item_l` ADD COLUMN `promot_new`  VARCHAR(20) NULL DEFAULT NULL COMMENT 'Promo marker after promo — written by ERP';
 ALTER TABLE `item_l` ADD COLUMN `it_cena_suma` FLOAT
@@ -84,8 +86,8 @@ ALTER TABLE `item_no` DROP COLUMN `it_cena`;
 ALTER TABLE `item_no` DROP COLUMN `it_suma`;
 ALTER TABLE `item_no` CHANGE COLUMN `it_cena_baza` `it_cena` FLOAT NULL DEFAULT NULL AFTER `item_br`;
 ALTER TABLE `item_no` CHANGE COLUMN `it_suma_baza` `it_suma` FLOAT NULL DEFAULT NULL AFTER `it_cena`;
-ALTER TABLE `item_no` ADD COLUMN `it_cena_new` FLOAT       NULL DEFAULT NULL COMMENT 'Final unit price after promo — written by ERP';
-ALTER TABLE `item_no` ADD COLUMN `it_suma_new` FLOAT       NULL DEFAULT NULL COMMENT 'Final line total after promo — written by ERP';
+ALTER TABLE `item_no` ADD COLUMN `it_cena_new` FLOAT       NULL DEFAULT NULL COMMENT 'Final unit price after promo — written by storefront (it_suma_new / item_br)';
+ALTER TABLE `item_no` ADD COLUMN `it_suma_new` FLOAT       NULL DEFAULT NULL COMMENT 'Final line total after promo — written by storefront (it_suma − discount_applied)';
 ALTER TABLE `item_no` ADD COLUMN `item_br_new` INT         NULL DEFAULT NULL COMMENT 'Final quantity after promo — written by ERP';
 ALTER TABLE `item_no` ADD COLUMN `promot_new`  VARCHAR(20) NULL DEFAULT NULL COMMENT 'Promo marker after promo — written by ERP';
 ALTER TABLE `item_no` ADD COLUMN `it_cena_suma` FLOAT
