@@ -1,0 +1,22 @@
+-- =============================================================================
+-- 04 — tek: purge the plaintext-password leak from the "repopulate form
+-- after error" mechanism
+-- Target: every regional DB only. tek does not exist on imartap.
+-- Run:  mysql -D <db> < 04-tek-purge-passwords.sql
+--
+-- ⚠ ORDER MATTERS: run this only AFTER the code deploy that stops writing
+-- these rows (citte/smenparoh.php no longer INSERTs the typed sspp/nnpp1/
+-- nnpp2 password values into tek — only the existing grushkann/grushkanp/
+-- grushkasp error flags, which this DELETE does not touch). Purge before
+-- that deploy and the rows just refill.
+--
+-- DELETE, not UPDATE: unlike greshni_logove.pass there is no other column on
+-- these rows worth keeping — a tek row IS the (kod, prm, stn) triple, so
+-- removing the value means removing the row.
+--
+-- Gol SQL, no guards. This DELETE is idempotent by nature — a second run
+-- matches 0 rows and succeeds silently, since the first run already removed
+-- every row with prm IN ('sspp','nnpp1','nnpp2').
+-- =============================================================================
+
+DELETE FROM tek WHERE prm IN ('sspp', 'nnpp1', 'nnpp2');

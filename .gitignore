@@ -7,4 +7,6 @@
 .DS_Store
 /buildtest
 /vendor
-/database/dumps/*
+/database/dumps/
+/virtualmin
+/custom_logs
