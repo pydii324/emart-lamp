@@ -43,11 +43,16 @@
 
 ALTER TABLE klienti
   ADD COLUMN parola_hash varchar(255)
-    CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL
+    NULL DEFAULT NULL
     COMMENT 'bcrypt hash staging column, written only by the CLI backfill script. Not read by live app code — see file header.'
     AFTER parola;
 
 ALTER TABLE klienti
-  ADD COLUMN parola_hash_data varchar(15) NULL DEFAULT NULL
+  ADD COLUMN parola_hash_updated_at varchar(15) NULL DEFAULT NULL
     COMMENT 'YmdHis на последната смяна на parola_hash.'
     AFTER parola_hash;
+
+-- Ако са пуснати миграциите в стария си вид, това е rollback към utf-8 на колоната
+ALTER TABLE klienti
+  MODIFY parola_hash VARCHAR(255)
+  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL;

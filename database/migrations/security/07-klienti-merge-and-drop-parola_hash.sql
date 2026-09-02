@@ -76,8 +76,13 @@ WHERE parola_hash IS NOT NULL AND parola_hash <> ''
 --    varchar(255) (bcrypt is 60 chars) leaves room for argon2id later
 --    without a further migration.
 ALTER TABLE klienti
-  MODIFY parola varchar(255) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL
+  MODIFY parola varchar(255) NULL DEFAULT NULL
     COMMENT 'bcrypt hash ($2y$/$2b$). Formerly urlencode(plaintext) — fully migrated once this ALTER ran.';
 
 -- 3) Retire the staging column — nothing reads it anymore.
-ALTER TABLE klienti DROP COLUMN parola_hash_data, DROP COLUMN parola_hash;
+ALTER TABLE klienti /* DROP COLUMN parola_hash_updated_at, */ DROP COLUMN parola_hash;
+
+-- Ако са пуснати миграциите в стария си вид, това е rollback към utf-8 на колоната
+ALTER TABLE klienti
+  MODIFY parola VARCHAR(255)
+  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL;

@@ -33,14 +33,14 @@ ALTER TABLE zabpas
     AFTER potreb_id;
 
 ALTER TABLE zabpas
-  ADD COLUMN izticha varchar(15) NULL DEFAULT NULL
+  ADD COLUMN expires_at varchar(15) NULL DEFAULT NULL
     COMMENT 'YmdHis докога важи токенът.'
     AFTER token_hash;
 
 ALTER TABLE zabpas
-  ADD COLUMN izpolzvan tinyint NOT NULL DEFAULT 1
+  ADD COLUMN used_at tinyint NOT NULL DEFAULT 1
     COMMENT 'Токенът консумиран ли е? 2=да, 1=не.'
-    AFTER izticha;
+    AFTER expires_at;
 
 ALTER TABLE zabpas
   ADD INDEX token_hash (token_hash) USING BTREE;
