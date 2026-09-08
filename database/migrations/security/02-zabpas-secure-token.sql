@@ -28,7 +28,7 @@
 
 ALTER TABLE zabpas
   ADD COLUMN token_hash char(64)
-    CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL
+    NULL DEFAULT NULL
     COMMENT 'sha256 hex на суровия reset токен. Суровият никога не се пази.'
     AFTER potreb_id;
 
@@ -38,9 +38,18 @@ ALTER TABLE zabpas
     AFTER token_hash;
 
 ALTER TABLE zabpas
-  ADD COLUMN used_at tinyint NOT NULL DEFAULT 1
+  ADD COLUMN used tinyint NOT NULL DEFAULT 1
     COMMENT 'Токенът консумиран ли е? 2=да, 1=не.'
     AFTER expires_at;
 
 ALTER TABLE zabpas
   ADD INDEX token_hash (token_hash) USING BTREE;
+
+ALTER TABLE zabpas DROP COLUMN koda, DROP COLUMN akt;
+
+-- Ако са пуснати миграциите в стария си вид, това е rollback към utf-8 на колоната
+ALTER TABLE zabpas
+  MODIFY token_hash VARCHAR(255)
+  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL;
+
+-- Променяваме тотално от колона `akt` към това да гледаме дали кода е активен от `expires_at` и `used`. Това е по-ясно и по-сигурно, защото не се разчита на "кода < now-3600" (което е guessable).

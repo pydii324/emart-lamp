@@ -4,8 +4,16 @@
  * update-currency-rates.php — refresh FLOATING FX rates in imartap.currency_rates.
  *
  * Base currency is EUR. currency_rates.rate_to_eur = how many EUR one unit of the
- * currency buys. lib/PromoCode.php reads it to convert promo money-fields from the
- * code's currency → EUR at the catalog read boundary.
+ * currency buys.
+ *
+ * ⚠ NOTHING IN THE APPLICATION READS THIS TABLE ANY MORE. lib/PromoCode.php used
+ * to convert promo money-fields through it; that layer was removed because a
+ * region has exactly one currency and its promo codes, cart and orders are all
+ * already in it, so converting only mispriced non-EUR regions. The table is kept
+ * as the record of the rates the pre-fix historical rows were written at, and
+ * this job is kept so those rates stay meaningful. Retiring both is a free
+ * cleanup once the historical promo rows stop mattering — see
+ * database/migrations/deploy/15-promo-currency-is-region-currency.sql.
  *
  * Only is_fixed = 0 rows are touched — EUR (the base, 1.0) and BGN (the
  * irrevocable 1/1.95583) are legally fixed and are NEVER fetched or overwritten.
@@ -35,7 +43,8 @@ if (PHP_SAPI !== 'cli') { http_response_code(404); exit(1); } // never over HTTP
 
 const BNB_XML_URL = 'https://www.bnb.bg/Statistics/StExternalSector/StExchangeRates/StERForeignCurrencies/index.htm?download=xml&search=&lang=EN';
 
-// Irrevocable BGN adoption rate (mirrors PromoCode::EUR_TO_BGN). No longer used
+// Irrevocable BGN adoption rate. PromoCode::EUR_TO_BGN is gone with the
+// conversion layer, so this is now the only copy in the codebase. No longer used
 // for conversion — the table's base is EUR and so is the BNB feed — but kept as
 // the documented value of the one fixed pair, and as the factor to reach for if
 // a leva figure is ever needed again.

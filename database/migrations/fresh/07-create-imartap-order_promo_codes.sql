@@ -28,7 +28,10 @@ CREATE TABLE `order_promo_codes` (
   `order_id`           INT           NOT NULL COMMENT 'porachki.porachki_id',
   `promo_code_id`      INT           NOT NULL COMMENT 'promo_codes.id',
   `klienti_id`         INT           NOT NULL DEFAULT '0' COMMENT '0 = guest',
-  `discount_applied`   DECIMAL(10,2) NOT NULL,
+  -- In `currency` below, like every other amount here: a region has one
+  -- currency, and its codes, cart and orders are all priced in it. Nothing is
+  -- converted — see the CURRENCY note in citte/lib/PromoCode.php.
+  `discount_applied`   DECIMAL(10,2) NOT NULL COMMENT 'in `currency` — the amount actually deducted from the order',
   -- Mirrors promo_codes.currency (fresh/06) — keep the two lists identical and
   -- in the same order, and APPEND new currencies rather than inserting them
   -- mid-list: MySQL converts ENUM values by string so nothing is remapped
@@ -36,7 +39,7 @@ CREATE TABLE `order_promo_codes` (
   -- where an append is in-place and LOCK=NONE.
   `currency`           ENUM('BGN','EUR','ALL','RON',
                             'CZK','DKK','GBP','HUF','MDL','MKD','PLN','RSD','RUB','SEK','TRY','UAH','USD','CAD')
-                       NOT NULL DEFAULT 'EUR' COMMENT 'snapshot of promo_codes.currency at order-finalize',
+                       NOT NULL DEFAULT 'EUR' COMMENT 'snapshot of promo_codes.currency at order-finalize — the unit of discount_applied',
   `used_by_employeeId` INT           DEFAULT NULL COMMENT 'admin/backoffice app — storefront leaves NULL',
   `created_at`         VARCHAR(14)   NOT NULL COMMENT 'YYYYMMDDHHmmss',
 
