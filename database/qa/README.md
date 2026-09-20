@@ -182,16 +182,55 @@ SELECT cat_no, it_cena, it_suma, it_cena_new, it_suma_new, discount_applied
 
 ---
 
+## Прихващане на имейлите
+
+`lamp-php84` няма MTA — `mail()` не праща нищо и не пише никъде. За да се
+провери писмото за потвърждение, сложи шим:
+
+```bash
+docker exec lamp-php84 sh -c 'cat > /usr/sbin/sendmail <<"EOF"
+#!/bin/sh
+mkdir -p /tmp/qa-mail
+cat > "/tmp/qa-mail/$(date +%s%N).eml"
+exit 0
+EOF
+chmod +x /usr/sbin/sendmail; mkdir -p /tmp/qa-mail; chmod 777 /tmp/qa-mail'
+```
+
+Apache върви като `www-data`, затова директорията трябва да е 777. След поръчка:
+`docker exec lamp-php84 ls /tmp/qa-mail/`. Шимът живее само докато контейнерът е
+вдигнат.
+
+## Миграции, нужни преди тестването
+
+`database/migrations/deploy/13-add-cendost-baza.sql` не е пуснат на dev дъмпа.
+Без него `cendost_baza` липсва и стъпка 3 / финализирането не могат да се минат:
+
+```bash
+docker exec -i lamp-mysql8 mysql -uroot -ptiger -D inmarta < database/migrations/deploy/13-add-cendost-baza.sql
+docker exec lamp-mysql8 mysql -uroot -ptiger -e \
+  "ALTER TABLE imartap.porachki ADD COLUMN cendost_baza DECIMAL(10,2) NULL DEFAULT NULL;"
+```
+
 ## Известни проблеми, които ще срещнеш
 
 Не ги докладвай като нови:
 
-1. **Percent отстъпката липсва в имейла.** `citte/podavam_za.php:1246` чете брутните
-   `it_cena`/`it_suma`, а percent кодовете вече нямат отрицателен ред. Имейлът показва
-   пълни цени, докато `porachki.porach_suma` е нетна. **Това е blocker за deploy.**
+1. ~~**Percent отстъпката липсва в имейла.**~~ Фикснато на 20.09.2026 —
+   `podavam_za.php` чете `COALESCE(NULLIF(it_cena_new,0), it_cena)`.
 2. **Паднал код на стъпка 3 не казва нищо.** Банерът за автоматично премахнат код е само
    в `case.php:233-250`. `case_potv.php` вика същия `promo_recalc()`, но не рендира
    `dropped_codes`.
 3. **Заглавието над полето казва `produktnomerzaemail`.** `promo-input.php:38` чете
    `$prevodite[3100]`, а ред 3100 вече е зает с друга стойност, така че `??` fallback-ът
    не гръмва. Редове 3101–3107 липсват в дъмпа и падат на fallback правилно.
+
+4. **Празна страница „Благодарим за поръчката".** `podavam_za.php:1877` слага
+   бисквитката `mart_podzav1` с номера на поръчката, но `the-marketer/utils/v2/set-email.php:42`
+   вече е ехнал `<script>` → `Cannot modify header information`. При
+   `output_buffering = 0` (както е в `lamp-php84`) бисквитката не се слага и
+   `/potvardih-porachkata` не показва поръчката. Не е промо бъг.
+
+5. **Поръчка под минимума минава.** Проверката „Минимална сума за поръчка 5 лв."
+   е само в изгледа на количката. Ваучер, който свали сметката под прага, не спира
+   финализирането — поръчка 421631 завърши с `porach_suma = 4.00`.
