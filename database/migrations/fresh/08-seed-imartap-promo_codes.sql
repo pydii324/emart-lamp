@@ -21,9 +21,8 @@
 --   shipping (full)   whole shipping free, cap NULL      SKU 6666666   (discount_value unused → 0)
 --   shipping (capped) up to shipping_cap off shipping    SKU 6666666   (discount_value unused → 0)
 --
--- 'shipping_percent' is NOT seeded here — the type was removed from the `type`
--- ENUM in 06 (see the note there). No row of this behaviour exists until it is
--- reintroduced.
+-- 'shipping_percent' is NOT seeded here — the type no longer exists, in the `type`
+-- ENUM (06) or in the PHP (see the note there).
 --
 -- Catalog money-fields are authored in the code's own `currency`; lib/PromoCode.php
 -- converts them to the BGN cart at read time via currency_rates (EUR ×1.95583 fixed;

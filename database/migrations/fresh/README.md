@@ -183,12 +183,13 @@ DROP TABLE IF EXISTS currency_rates;
 
 ## Бележки
 
-- **`shipping_percent` не е в `type` ENUM-а (01, 06).** Премахнат нарочно от схемата
-  на 2026-08-21 — приложният код (`lib/PromoCalc.php`, `lib/PromoCode.php`,
-  `promo-input.php`, `promo-cart-rows.php`, `the-marketer/promo-codes.php`) все още
-  го поддържа изцяло, за бъдещо връщане. Затова 08 вече seed-ва 6 примерни реда
-  вместо 7. Връщането му е обикновен `ALTER TABLE ... MODIFY type ENUM(...)`,
-  добавящ стойността в края на списъка — в двете таблици (01 и 06).
+- **`shipping_percent` не е в `type` ENUM-а (01, 06).** Премахнат от схемата на
+  2026-08-21 и от приложния код на 2026-09-20 (`lib/PromoCalc.php`,
+  `lib/PromoCodeCatalog.php`, `promo-input.php`, `promo-cart-rows.php`,
+  `the-marketer/promo-codes.php` — `?type=3` връща 400). Живите бази губят
+  стойността с `deploy/16` + `deploy/17`. Затова 08 seed-ва 6 примерни реда вместо
+  7. Процент върху доставката отпада като бизнес случай — плоският `shipping` с
+  `shipping_cap` го покрива; връщането му иска и код, не само ENUM стойност.
 - **Charset.** Живата BG `catalog.ime` е корумпирана at-rest (mojibake, double-encoded с
   latin1 клиент). Файл 05 нарочно НЕ възпроизвежда бъга (`SET NAMES utf8mb4`).
 - `miarka` в seed-а е `бр.` (както в BG). Смени ако Албания ползва друг етикет.

@@ -24,7 +24,7 @@ CREATE TABLE `cart_promo_codes` (
   -- row in item_l/item_no.
   `discount_applied` DECIMAL(10,2) NOT NULL DEFAULT '0.00' COMMENT 'in `currency` — 0 for shipping types, real deduction for percent/fixed',
   -- SNAPSHOT of promo_codes.discount_value, byte-for-byte as the catalog holds
-  -- it. (percent / shipping_percent store a %, which has no currency.)
+  -- it. (percent stores a %, which has no currency.)
   `discount_value`   DECIMAL(10,2) NOT NULL DEFAULT '0.00' COMMENT 'promo_codes.discount_value at apply-time, in `currency` — unconverted',
   -- Mirrors promo_codes.currency (fresh/06) — keep the two lists identical and
   -- in the same order, and APPEND new currencies rather than inserting them
@@ -34,8 +34,8 @@ CREATE TABLE `cart_promo_codes` (
   `currency`         ENUM('BGN','EUR','ALL','RON',
                           'CZK','DKK','GBP','HUF','MDL','MKD','PLN','RSD','RUB','SEK','TRY','UAH','USD','CAD')
                      NOT NULL DEFAULT 'EUR' COMMENT 'snapshot of promo_codes.currency at apply-time — the unit of EVERY amount in this row',
-  -- 'shipping_percent' intentionally NOT in this ENUM — see the note on the
-  -- `type` column in 06-create-imartap-promo_codes.sql.
+  -- 'shipping_percent' is gone for good — see the note on the `type` column in
+  -- 06-create-imartap-promo_codes.sql.
   `type`             ENUM('percent','fixed','shipping') NOT NULL,
   `subtype`          ENUM('voucher','coupon') DEFAULT NULL,
   `shipping_cap`     DECIMAL(10,2) DEFAULT NULL COMMENT 'promo_codes.shipping_cap, in `currency` — flat cap on the discount, NULL = uncapped',

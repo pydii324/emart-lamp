@@ -237,7 +237,7 @@ ORDER BY `currency`;
 
 
 -- ── I. promo_codes seed — expect 6 rows, one per behaviour ───── IMARTAP ONLY ─
--- ('shipping_percent' is not seeded — see the note in 06/08.)
+-- ('shipping_percent' no longer exists as a type — see the note in 06/08.)
 SELECT 'I. promo_codes seed' AS `check`,
        `id`, `code`, `type`, `subtype`, `discount_value`, `currency`,
        `shipping_cap`, `active`, `site`

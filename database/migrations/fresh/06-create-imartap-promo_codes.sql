@@ -23,13 +23,13 @@
 CREATE TABLE `promo_codes` (
   `id`              INT           NOT NULL AUTO_INCREMENT,
   `code`            VARCHAR(50)   NOT NULL,
-  -- 'shipping_percent' intentionally NOT in this ENUM (removed 2026-08-21) — the
-  -- application code (lib/PromoCalc.php, lib/PromoCode.php, promo-input.php,
-  -- promo-cart-rows.php, the-marketer/promo-codes.php) still fully implements
-  -- this type for when it is reintroduced; only the DB-level option is dropped
-  -- here. Re-adding it later is a normal ENUM ADD in both this table and
-  -- cart_promo_codes (01) — MySQL converts ENUM values by string, so appending
-  -- it back at the end is a safe, in-place ALTER.
+  -- 'shipping_percent' is gone for good: dropped from this ENUM on 2026-08-21 and
+  -- from the PHP on 2026-09-20 (lib/PromoCalc.php, lib/PromoCodeCatalog.php,
+  -- promo-input.php, promo-cart-rows.php, the-marketer/promo-codes.php — ?type=3
+  -- now answers 400). Live DBs lose the value via deploy/16 + deploy/17.
+  -- Percentage off delivery is not a business case any more: flat 'shipping'
+  -- with shipping_cap covers it. Reintroducing the type means writing the code
+  -- again, not just appending the ENUM value.
   `type`            ENUM('percent','fixed','shipping') NOT NULL DEFAULT 'percent',
   `subtype`         ENUM('voucher','coupon') NULL DEFAULT NULL COMMENT 'fixed only: NULL/voucher → SKU 5555555, coupon → SKU 7777777',
   `discount_value`  DECIMAL(10,2) NOT NULL,
@@ -50,7 +50,7 @@ CREATE TABLE `promo_codes` (
                          'CZK','DKK','GBP','HUF','MDL','MKD','PLN','RSD','RUB','SEK','TRY','UAH','USD','CAD')
                     NOT NULL DEFAULT 'EUR' COMMENT 'code currency (ALL = Albanian lek, RON = Romanian leu, MDL = Moldovan leu, MKD = Macedonian denar, RSD = Serbian dinar)',
   `min_subtotal`    DECIMAL(10,2) NOT NULL DEFAULT 0,
-  `shipping_cap`    DECIMAL(10,2) NULL DEFAULT NULL COMMENT 'shipping only for now: max discount, NULL = uncapped (see the shipping_percent note above)',
+  `shipping_cap`    DECIMAL(10,2) NULL DEFAULT NULL COMMENT 'shipping only: max discount, NULL = uncapped',
   `max_uses`        INT           NOT NULL DEFAULT 0 COMMENT '0 = unlimited',
   `times_used`      INT           NOT NULL DEFAULT 0,
   `active`          BOOLEAN       NOT NULL DEFAULT TRUE,
