@@ -26,10 +26,14 @@ DELETE FROM `promo_codes` WHERE `created_by` = 'qa-seed';
 --   SHIPPCT50     — type 'shipping_percent'. Типът е премахнат изцяло (20.09.2026):
 --                   няма го нито в DB ENUM-а, нито в PHP. Код от този тип не бива
 --                   да се тества.
---   VOUCHER500ALL — site='bg' с currency='ALL'. Остатък от конверсионния слой,
---                   който беше махнат на 10.09. Нарушава инварианта
---                   „един регион = една валута" и дава подвеждащи суми.
-DELETE FROM `promo_codes` WHERE `created_by` = 'fresh-seed' AND `code` IN ('SHIPPCT50', 'VOUCHER500ALL');
+--   VOUCHER500ALL — само старият вариант със site='bg' и currency='ALL'. Остатък от
+--                   конверсионния слой, махнат на 10.09; нарушава инварианта
+--                   „един регион = една валута" и дава подвеждащи суми. От 21.09
+--                   fresh/08 го seed-ва като site='al', където е коректен — затова
+--                   DELETE-ът го хваща по site, а не по код.
+DELETE FROM `promo_codes`
+ WHERE `created_by` = 'fresh-seed'
+   AND (`code` = 'SHIPPCT50' OR (`code` = 'VOUCHER500ALL' AND `site` = 'bg'));
 
 -- --- 1. Фикстури за валидацията (чеклист 1.1) --------------------------------
 -- Всеки от тези трябва да бъде ОТХВЪРЛЕН с конкретно съобщение. Редът в

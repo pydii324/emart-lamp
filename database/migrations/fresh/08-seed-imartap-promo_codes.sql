@@ -24,12 +24,12 @@
 -- 'shipping_percent' is NOT seeded here — the type no longer exists, in the `type`
 -- ENUM (06) or in the PHP (see the note there).
 --
--- Catalog money-fields are authored in the code's own `currency`; lib/PromoCode.php
--- converts them to the BGN cart at read time via currency_rates (EUR ×1.95583 fixed;
--- BGN passthrough; ALL/lek ×manual rate). Set `currency` per code to 'BGN', 'EUR'
--- or 'ALL'. Codes 1-5 below are EUR examples (site = 'bg', Albania); code 6 is an
--- 'ALL' (Albanian lek) example for lek testing. discount_value is monetary only for
--- `fixed`; `percent` holds a %, which is never converted.
+-- Catalog money-fields are authored in the code's own `currency`, and NOTHING in
+-- the promo path converts: one region = one currency, so a code's `currency` must
+-- be the one its `site` prices in (citte/lib/PromoRegion.php holds the map). Codes
+-- 1-5 below are 'bg'/EUR; code 6 is 'al'/ALL (Albanian lek), the fixture for a
+-- non-EUR region. discount_value is monetary only for `fixed`; `percent` holds a
+-- %, which has no currency at all.
 -- =============================================================================
 
 SET NAMES utf8mb4;
@@ -39,9 +39,9 @@ SET NAMES utf8mb4;
 --   3) COUPON5       fixed / coupon    — 5.00 flat off subtotal (SKU 7777777)
 --   4) FREESHIP      shipping          — whole shipping free, uncapped (SKU 6666666)
 --   5) SHIPCAP3      shipping          — up to 3.00 off shipping (SKU 6666666)
---   6) VOUCHER500ALL fixed / voucher   — 500 lek off subtotal (SKU 5555555); priced in
---                                        lek → converts to BGN via currency_rates['ALL']
---                                        (500 * 0.0196 ≈ 9.80 BGN)
+--   6) VOUCHER500ALL fixed / voucher   — 500 lek off an Albanian cart (SKU 5555555).
+--                                        site = 'al', so it is invisible to bg and
+--                                        the 500 is never read as 500 EUR.
 INSERT INTO `promo_codes`
   (`code`, `type`, `subtype`, `discount_value`, `currency`, `min_subtotal`, `shipping_cap`, `max_uses`, `active`, `expiration_date`, `created_at`, `source`, `note`, `site`, `created_by`) VALUES
   ('PERCENT10',     'percent',          NULL,      10.00, 'EUR', 0.00, NULL, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: 10% off cart subtotal (SKU 8888888)',   'bg', 'fresh-seed'),
@@ -49,4 +49,4 @@ INSERT INTO `promo_codes`
   ('COUPON5',       'fixed',            'coupon',   5.00, 'EUR', 0.00, NULL, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: 5.00 fixed coupon (SKU 7777777)',       'bg', 'fresh-seed'),
   ('FREESHIP',      'shipping',         NULL,       0.00, 'EUR', 0.00, NULL, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: free shipping, uncapped (SKU 6666666)', 'bg', 'fresh-seed'),
   ('SHIPCAP3',      'shipping',         NULL,       0.00, 'EUR', 0.00, 3.00, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: up to 3.00 off shipping (SKU 6666666)', 'bg', 'fresh-seed'),
-  ('VOUCHER500ALL', 'fixed',            'voucher', 500.00, 'ALL', 0.00, NULL, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: 500 lek fixed voucher (SKU 5555555)',  'bg', 'fresh-seed');
+  ('VOUCHER500ALL', 'fixed',            'voucher', 500.00, 'ALL', 0.00, NULL, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: 500 lek fixed voucher, Albanian cart (SKU 5555555)', 'al', 'fresh-seed');

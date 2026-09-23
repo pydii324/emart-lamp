@@ -12,7 +12,7 @@ services:
       - database
     volumes:
       - ${DOCUMENT_ROOT-./www}:/var/www/html:rw
-      - vendor_php:/var/www/vendor
+      - ./vendor:/var/www/vendor
       - ${PHP_INI-./config/php/php.ini}:/usr/local/etc/php/php.ini
       - ${SSL_DIR-./config/ssl}:/etc/apache2/ssl/
       - ${VHOSTS_DIR-./config/vhosts}:/etc/apache2/sites-enabled
@@ -78,11 +78,12 @@ services:
     restart: "always"
     tty: true
     working_dir: /app
+    # Writes node_modules straight into the bind mount, so the host sees the same
+    # tree the container installed. HOME must be writable for uid 1000 — npm
+    # caches in $HOME/.npm and /root is not ours.
+    user: "1000:1000"
+    environment:
+      - HOME=/tmp
     volumes:
       - ${DOCUMENT_ROOT-./www}:/app
-      - node_modules:/app/node_modules
     command: sh -c "npm install --no-audit --no-fund --ignore-scripts && npm run dev"
-
-volumes:
-  node_modules:
-  vendor_php:

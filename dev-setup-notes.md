@@ -11,12 +11,18 @@
 Drago FATAL: Липсват библиотеките от vendor/ папката.
 ```
 
-**Причина:** `composer.json` дефинира `"vendor-dir": "../vendor"`, което означава че `vendor/` се инсталира в `/var/www/vendor/` (извън `public_html/`). Тази директория не е volume-mountната и изчезва при рестарт на контейнера.
+**Причина:** `composer.json` дефинира `"vendor-dir": "../vendor"`, което означава че `vendor/` се инсталира в `/var/www/vendor/` (извън `public_html/`).
 
-**Решение:** При всеки рестарт на контейнера се изпълнява:
+**Решение:** `vendor/` в root-а на репото е bind mount-ната на `/var/www/vendor`
+(`docker-compose.yml`), значи преживява рестарт и се вижда на хоста. Пуска се
+веднъж, и после само при промяна на `composer.json`:
 ```bash
-docker exec lamp-php84 bash -c "cd /var/www/html && composer install --no-interaction"
+docker exec -u 1000:1000 -w /var/www/html -e COMPOSER_HOME=/tmp/composer \
+  lamp-php84 composer install --no-interaction
 ```
+`-u 1000:1000` държи файловете собственост на потребителя — `lamp-php84` върви
+като root. Директорията трябва да съществува преди `docker compose up`, иначе
+докер я създава root-owned (`mkdir -p vendor`).
 
 ---
 
@@ -139,5 +145,6 @@ chmod 666 public_html/custom_logs/custom_error.log
 
 ```bash
 docker compose up -d
-docker exec lamp-php84 bash -c "cd /var/www/html && composer install --no-interaction"
 ```
+`composer install` вече не е част от рестарта — `vendor/` е bind mount, не named
+volume, и не изчезва.
