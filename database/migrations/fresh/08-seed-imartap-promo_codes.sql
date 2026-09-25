@@ -24,11 +24,10 @@
 -- 'shipping_percent' is NOT seeded here — the type no longer exists, in the `type`
 -- ENUM (06) or in the PHP (see the note there).
 --
--- Catalog money-fields are authored in the code's own `currency`, and NOTHING in
--- the promo path converts: one region = one currency, so a code's `currency` must
--- be the one its `site` prices in (citte/lib/PromoRegion.php holds the map). Codes
--- 1-5 below are 'bg'/EUR; code 6 is 'al'/ALL (Albanian lek), the fixture for a
--- non-EUR region. discount_value is monetary only for `fixed`; `percent` holds a
+-- Catalog money-fields are in the currency of the code's `site`, and NOTHING in
+-- the promo path converts: one region = one currency (citte/lib/PromoRegion.php
+-- holds the map; promo_codes has no currency column). Codes 1-5 below are 'bg'
+-- (EUR); code 6 is 'al' (ALL, Albanian lek), the fixture for a non-EUR region. discount_value is monetary only for `fixed`; `percent` holds a
 -- %, which has no currency at all.
 -- =============================================================================
 
@@ -43,10 +42,10 @@ SET NAMES utf8mb4;
 --                                        site = 'al', so it is invisible to bg and
 --                                        the 500 is never read as 500 EUR.
 INSERT INTO `promo_codes`
-  (`code`, `type`, `subtype`, `discount_value`, `currency`, `min_subtotal`, `shipping_cap`, `max_uses`, `active`, `expiration_date`, `created_at`, `source`, `note`, `site`, `created_by`) VALUES
-  ('PERCENT10',     'percent',          NULL,      10.00, 'EUR', 0.00, NULL, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: 10% off cart subtotal (SKU 8888888)',   'bg', 'fresh-seed'),
-  ('VOUCHER5',      'fixed',            'voucher',  5.00, 'EUR', 0.00, NULL, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: 5.00 fixed voucher (SKU 5555555)',      'bg', 'fresh-seed'),
-  ('COUPON5',       'fixed',            'coupon',   5.00, 'EUR', 0.00, NULL, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: 5.00 fixed coupon (SKU 7777777)',       'bg', 'fresh-seed'),
-  ('FREESHIP',      'shipping',         NULL,       0.00, 'EUR', 0.00, NULL, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: free shipping, uncapped (SKU 6666666)', 'bg', 'fresh-seed'),
-  ('SHIPCAP3',      'shipping',         NULL,       0.00, 'EUR', 0.00, 3.00, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: up to 3.00 off shipping (SKU 6666666)', 'bg', 'fresh-seed'),
-  ('VOUCHER500ALL', 'fixed',            'voucher', 500.00, 'ALL', 0.00, NULL, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: 500 lek fixed voucher, Albanian cart (SKU 5555555)', 'al', 'fresh-seed');
+  (`code`, `type`, `subtype`, `discount_value`, `min_subtotal`, `shipping_cap`, `max_uses`, `active`, `expiration_date`, `created_at`, `source`, `note`, `site`, `created_by`) VALUES
+  ('PERCENT10',     'percent',          NULL,      10.00, 0.00, NULL, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: 10% off cart subtotal (SKU 8888888)',   'bg', 'fresh-seed'),
+  ('VOUCHER5',      'fixed',            'voucher',  5.00, 0.00, NULL, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: 5.00 fixed voucher (SKU 5555555)',      'bg', 'fresh-seed'),
+  ('COUPON5',       'fixed',            'coupon',   5.00, 0.00, NULL, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: 5.00 fixed coupon (SKU 7777777)',       'bg', 'fresh-seed'),
+  ('FREESHIP',      'shipping',         NULL,       0.00, 0.00, NULL, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: free shipping, uncapped (SKU 6666666)', 'bg', 'fresh-seed'),
+  ('SHIPCAP3',      'shipping',         NULL,       0.00, 0.00, 3.00, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: up to 3.00 off shipping (SKU 6666666)', 'bg', 'fresh-seed'),
+  ('VOUCHER500ALL', 'fixed',            'voucher', 500.00, 0.00, NULL, 0, 1, NULL, DATE_FORMAT(NOW(), '%Y%m%d%H%i%s'), 'manual', 'Example: 500 lek fixed voucher, Albanian cart (SKU 5555555)', 'al', 'fresh-seed');

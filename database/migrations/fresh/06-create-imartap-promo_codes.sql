@@ -33,22 +33,10 @@ CREATE TABLE `promo_codes` (
   `type`            ENUM('percent','fixed','shipping') NOT NULL DEFAULT 'percent',
   `subtype`         ENUM('voucher','coupon') NULL DEFAULT NULL COMMENT 'fixed only: NULL/voucher → SKU 5555555, coupon → SKU 7777777',
   `discount_value`  DECIMAL(10,2) NOT NULL,
-  -- One currency per region — see PromoCode::SITE_CURRENCY, which is the single
-  -- source of truth for the site → currency mapping. Every value here MUST also
-  -- have a `currency_rates` row (file 09) or PromoCode::toEur() silently falls
-  -- back to rate 1.0 and a `fixed` code is deducted at its face value in EUR.
-  -- The first four are the original set and the rest were APPENDED. Keep adding
-  -- at the end: MySQL converts ENUM values by string, so a mid-list insert does
-  -- not remap anything, but it forces ALGORITHM=COPY (a full table rebuild)
-  -- where an append is in-place and LOCK=NONE.
-  -- No region maps to BGN any more (Bulgaria is euro-only — PromoCode::
-  -- SITE_CURRENCY['bg'] is 'EUR') and BGN is no longer the base either; EUR is,
-  -- both here and in currency_rates. The value stays because old codes and every
-  -- past order snapshot reference it — BGN is now just a legally fixed currency
-  -- like any other, at 1/1.95583 EUR.
-  `currency`        ENUM('BGN','EUR','ALL','RON',
-                         'CZK','DKK','GBP','HUF','MDL','MKD','PLN','RSD','RUB','SEK','TRY','UAH','USD','CAD')
-                    NOT NULL DEFAULT 'EUR' COMMENT 'code currency (ALL = Albanian lek, RON = Romanian leu, MDL = Moldovan leu, MKD = Macedonian denar, RSD = Serbian dinar)',
+  -- No `currency` column: a code is in its site's currency (PromoRegion::CURRENCY),
+  -- the one its cart is priced in. The column used to copy that mapping and could
+  -- contradict `site`; it was dropped by deploy/19-drop-promo_codes-currency.sql.
+  -- The currency snapshot lives in cart_promo_codes / order_promo_codes.
   `min_subtotal`    DECIMAL(10,2) NOT NULL DEFAULT 0,
   `shipping_cap`    DECIMAL(10,2) NULL DEFAULT NULL COMMENT 'shipping only: max discount, NULL = uncapped',
   `max_uses`        INT           NOT NULL DEFAULT 0 COMMENT '0 = unlimited',
@@ -70,13 +58,13 @@ CREATE TABLE `promo_codes` (
   --
   -- The list MUST stay byte-identical to PromoCode::SITES (same values, same
   -- order) — adding a region means this ENUM first, then that const, then a
-  -- PromoCode::SITE_CURRENCY entry (the-marketer's generator refuses a region
+  -- PromoRegion::CURRENCY entry (the-marketer's generator refuses a region
   -- with no currency). 'en' / 'biz' / 'org' are storefronts, not countries:
   -- they carry no national currency and are mapped to EUR. 'co' is Canada (CAD)
   -- — not the .co TLD and not Colombia.
   -- bg/ro/gr/al stay first — they are the original four and the 33 new regions
-  -- are APPENDED, never interleaved. Same reason as `currency` above: a mid-list
-  -- insert is safe for the data but forces a full table copy.
+  -- are APPENDED, never interleaved. A mid-list insert is safe for the
+  -- data but forces a full table copy (ALGORITHM=COPY instead of in-place).
   -- Live instances already on the four-region ENUM: see
   -- deploy/10-extend-site-and-currency-enums.sql.
   `site`            ENUM('bg','ro','gr','al',

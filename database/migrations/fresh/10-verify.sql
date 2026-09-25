@@ -85,12 +85,12 @@ ORDER BY TABLE_NAME;
 
 
 -- ── E. currency ENUMs carry all 18 currencies ───────────────────────────────
--- promo_codes / cart_promo_codes / order_promo_codes must all declare the same
+-- cart_promo_codes / order_promo_codes must both declare the same
 -- 18 currencies — the four originals BGN/EUR/ALL/RON first, then the 14 appended
 -- for the non-euro regions. A short ENUM truncates a code in a missing currency
--- on write, and a pivot whose list is shorter than promo_codes' silently loses
--- the snapshot. An instance still on the old four: mysql-dumps/deploy/10-extend-
--- site-and-currency-enums.sql.
+-- on write, so the snapshot of a region in that currency is lost.
+-- promo_codes has no currency column since deploy/19. An instance still on the
+-- old four: mysql-dumps/deploy/10-extend-site-and-currency-enums.sql.
 --
 -- BGN must stay declared even though NO region authors in it any more ('bg' is
 -- EUR — Bulgaria is euro-only). It is the currency the cart is priced in, the
@@ -119,7 +119,7 @@ SELECT
 FROM information_schema.COLUMNS
 WHERE TABLE_SCHEMA = DATABASE()
   AND COLUMN_NAME = 'currency'
-  AND TABLE_NAME IN ('promo_codes','cart_promo_codes','order_promo_codes')
+  AND TABLE_NAME IN ('cart_promo_codes','order_promo_codes')
 ORDER BY TABLE_NAME;
 
 
@@ -203,20 +203,6 @@ FROM `currency_rates`
 ORDER BY `is_fixed` DESC, `currency`;
 
 
--- ── H2. every authorable currency has a rate row ─────────────── IMARTAP ONLY ─
--- PromoCode::toEur() falls back to rate 1.0 for a currency with no row, i.e. it
--- treats the amount as already-EUR: a `fixed` HUF code would deduct its face
--- value in euro. Expect 0 rows.
-SELECT
-  'H2. currency without a rate' AS `check`,
-  p.`currency`,
-  COUNT(*)                      AS `codes`,
-  'FAIL — add a currency_rates row before authoring in this currency' AS `result`
-FROM `promo_codes` p
-WHERE NOT EXISTS (SELECT 1 FROM `currency_rates` r WHERE r.`currency` = p.`currency`)
-GROUP BY p.`currency`;
-
-
 -- ── H3. the base is EUR and is exactly 1.0 ───────────────────── IMARTAP ONLY ─
 -- If EUR is anything but 1.00000000 every converted amount is scaled by that
 -- factor. BGN must be the irrevocable 1/1.95583 and flagged fixed, or the nightly
@@ -239,7 +225,7 @@ ORDER BY `currency`;
 -- ── I. promo_codes seed — expect 6 rows, one per behaviour ───── IMARTAP ONLY ─
 -- ('shipping_percent' no longer exists as a type — see the note in 06/08.)
 SELECT 'I. promo_codes seed' AS `check`,
-       `id`, `code`, `type`, `subtype`, `discount_value`, `currency`,
+       `id`, `code`, `type`, `subtype`, `discount_value`,
        `shipping_cap`, `active`, `site`
 FROM `promo_codes`
 WHERE `created_by` = 'fresh-seed'
