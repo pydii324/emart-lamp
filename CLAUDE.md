@@ -2,7 +2,11 @@
 
 LAMP стек в Docker. Кодът на магазина е в `public_html/` (отделно git repo), Drizzle
 схемите и документацията по issue-тата — в `emart-monorepo/` (също отделно repo).
-Миграциите и seed-овете са в `database/`.
+Миграциите са drizzle миграции в `emart-monorepo/packages/db/migrations/<група>/`
+(`domainsMain` = регионалните бази, `imartap` = общата); правилата са в
+`emart-monorepo/docs/db-migrations.md`. `database/migrations/` (fresh, changes,
+deploy) е старият ръчен вариант — стои само за справка, не се пуска.
+`migrations/security/` още не е пренесена в drizzle.
 
 ## Зависимостите се инсталират от контейнера, но живеят на хоста
 
