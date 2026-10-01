@@ -224,9 +224,8 @@ docker exec lamp-mysql8 mysql -uroot -ptiger -e \
 2. **Паднал код на стъпка 3 не казва нищо.** Банерът за автоматично премахнат код е само
    в `case.php:233-250`. `case_potv.php` вика същия `promo_recalc()`, но не рендира
    `dropped_codes`.
-3. **Заглавието над полето казва `produktnomerzaemail`.** `promo-input.php:38` чете
-   `$prevodite[3100]`, а ред 3100 вече е зает с друга стойност, така че `??` fallback-ът
-   не гръмва. Редове 3101–3107 липсват в дъмпа и падат на fallback правилно.
+3. ~~**Заглавието над полето казва `produktnomerzaemail`.**~~ Фикснато на 29.09.2026 —
+   `promo-input.php` чете 3106, а `deploy/20` seed-ва 3101–3108.
 
 4. **Празна страница „Благодарим за поръчката".** `podavam_za.php:1877` слага
    бисквитката `mart_podzav1` с номера на поръчката, но `the-marketer/utils/v2/set-email.php:42`
