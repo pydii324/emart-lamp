@@ -17,7 +17,11 @@
 -- Drizzle схемата (packages/db/src/regional-DB/schema.ts).
 --
 -- Старите цифрови cookie-та се приемат само ако promenliviprevodi 5190 (гост) /
--- 5191 (логнат) = '2'. Без тези редове всяка стара сесия започва наново.
+-- 5191 (логнат) = '2'. Докато са '2', подменено цифрово cookie пак влиза в
+-- чужда сесия (QA #64) — дръж ги '2' само за кратко след deploy. Редовете се
+-- слагат с '1' (изключено): без тях sesii.php:443 печата „Undefined array key“
+-- при display_errors, а това праща headers-ите и чупи всяко пренасочване.
+-- INSERT IGNORE не пипа стойност, която колегата вече е сложил.
 -- =============================================================================
 
 SET NAMES utf8mb4;
@@ -25,3 +29,5 @@ SET NAMES utf8mb4;
 ALTER TABLE `sesii`
   ADD COLUMN `public_session_id` CHAR(64) CHARACTER SET utf8mb3 COLLATE utf8mb3_unicode_ci NULL,
   ADD UNIQUE INDEX `uq_sesii_public_session_id` (`public_session_id`);
+
+INSERT IGNORE INTO `promenliviprevodi` (`id`, `du`) VALUES (5190, '1'), (5191, '1');
