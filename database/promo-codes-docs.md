@@ -1,8 +1,8 @@
 # Система за промо кодове
 
-> Последно обновено: 2026-05-14. Замества предишната версия с новата консолидирана схема (виж `promo-codes-master-plan.md`).
+> Последно обновено: 2026-05-14. Замества предишната версия (планът е в `promo-codes-master-plan.md`).
 >
-> Тази версия консолидира `loyality_points` + `obshti_kodove` + `promo_codes` в единна `promo_codes` таблица. Старите таблици остават read-only за reference.
+> `loyality_points`, `obshti_kodove` и старата `promo_codes` вече са една таблица: `promo_codes`. Старите таблици остават само за четене, за справка.
 
 ---
 
@@ -10,7 +10,7 @@
 
 ### Конвенция за дати
 
-Всички date/time колони в `promo_codes` / `cart_promo_codes` / `order_promo_codes` са `VARCHAR(14)` в `YYYYMMDDHHmmss` формат — съответства на PHP `date('YmdHis')`. Lexicographic comparison работи коректно за подреждане и сравнение. Това е установената конвенция в `imartap` (виж `loyality_points.data_sazdaden`, `obshti_kodove.data_validen`).
+Всички date/time колони в `promo_codes` / `cart_promo_codes` / `order_promo_codes` са `VARCHAR(14)` във формат `YYYYMMDDHHmmss`, т.е. това, което връща PHP `date('YmdHis')`. Сравняват се като низове и подреждането излиза вярно. Така са и останалите дати в `imartap` (`loyality_points.data_sazdaden`, `obshti_kodove.data_validen`).
 
 ### Таблица `promo_codes`
 
@@ -59,7 +59,7 @@ CREATE TABLE `promo_codes` (
 | `min_subtotal` | Минимална стойност на количката за активиране |
 | `shipping_cap` | Само за `shipping` — максимална доставка за покриване; `NULL` = покрива всичко |
 | `max_uses` | Брой употреби общо; `0` = безлимитно; `1` = single-use (the-marketer кодове) |
-| `times_used` | Брояч на употреби; incremenет-ва се при `markUsed()` чрез `times_used = times_used + 1` |
+| `times_used` | Брояч на употреби; `markUsed()` го увеличава с `times_used = times_used + 1` |
 | `active` | Manual on/off switch |
 | `stack_group` | `NULL` = комбинира се с всичко; число = само 1 код от групата може да е активен |
 | `expiration_date` | Краен срок (VARCHAR(14)); `NULL` = без срок |
@@ -115,7 +115,7 @@ CREATE TABLE `order_promo_codes` (
 
 ## Стари таблици (deprecated, read-only)
 
-`loyality_points` и `obshti_kodove` остават след миграцията само за reference / audit / reconciliation срещу external systems (The Marketer dashboard). PHP кодът не пише и не чете от тях.
+`loyality_points` и `obshti_kodove` остават след миграцията само за справка, одит и сверка с външни системи (The Marketer dashboard). PHP кодът не ги чете и не пише в тях.
 
 | Стара таблица | Брой редове (2026-05-14) | Замяна |
 |---|---|---|
@@ -159,7 +159,7 @@ citte/
 
 ### Сравнение на дати
 
-`expiration_date` сравнението е string-based (lexicographic на `YYYYMMDDHHmmss`):
+`expiration_date` се сравнява като низ (`YYYYMMDDHHmmss`):
 
 ```php
 if ($r['expiration_date'] && $r['expiration_date'] < date('YmdHis')) {
@@ -167,7 +167,7 @@ if ($r['expiration_date'] && $r['expiration_date'] < date('YmdHis')) {
 }
 ```
 
-Не използваме `strtotime()` — VARCHAR(14) форматът е lexicographic-sortable, директното сравнение е по-бързо и без timezone gotchas.
+Без `strtotime()`: при този формат директното сравнение на низове е по-бързо и няма проблеми с часовите зони.
 
 ---
 
@@ -191,7 +191,7 @@ discount_i   = it_suma_i - effective_i
 | Малка продуктова отстъпка | 90 лв. | 100 лв. | 60 лв. | Ползва промото (60 лв.) |
 | Без отстъпка | 100 лв. | 100 лв. | 60 лв. | Ползва промото (60 лв.) |
 
-Ако `it_osnovna_cena = 0` (артикулът няма записана каталожна цена) — промото се прилага върху намалената цена като fallback.
+Ако `it_osnovna_cena = 0` (артикулът няма записана каталожна цена), промото се смята върху намалената цена.
 
 ### `fixed` тип — ваучер
 
